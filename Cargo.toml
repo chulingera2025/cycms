@@ -33,8 +33,15 @@ license = "Apache-2.0"
 repository = "https://github.com/chulingera2025/cycms"
 
 [workspace.lints.rust]
+unsafe_code = "forbid"
 
 [workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# 允许在公共 API 中使用 must_use，但不强制
+must_use_candidate = "allow"
+# 模块名称重导出在 Rust 2024 下是惯用写法
+module_name_repetitions = "allow"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
