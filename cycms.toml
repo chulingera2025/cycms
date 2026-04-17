@@ -1,0 +1,56 @@
+# cycms 默认系统配置模板
+# 所有字段均可通过环境变量覆盖，格式：CYCMS__<SECTION>__<KEY>
+# 示例：CYCMS__SERVER__PORT=9000
+
+[server]
+host = "0.0.0.0"
+port = 8080
+
+[server.rate_limit]
+# 每用户（已认证）或来源 IP（匿名）的请求配额，单位：次/分钟
+requests_per_minute = 60
+# 敏感端点（登录/注册/刷新）独立配额
+sensitive_requests_per_minute = 10
+
+[server.cors]
+allowed_origins = ["http://localhost:3000"]
+allow_credentials = true
+# OPTIONS 预检缓存时长（秒）
+max_age_secs = 600
+
+[database]
+# 支持 postgres / mysql / sqlite
+driver = "postgres"
+url = "postgres://cycms:cycms@localhost:5432/cycms"
+max_connections = 10
+
+[auth]
+# 生产环境务必替换为强随机密钥（至少 32 字节）
+jwt_secret = "CHANGE_ME_IN_PRODUCTION"
+# access_token 有效期（秒），默认 15 分钟
+access_token_ttl_secs = 900
+# refresh_token 有效期（秒），默认 14 天
+refresh_token_ttl_secs = 1209600
+
+[auth.argon2]
+m_cost = 19456
+t_cost = 2
+p_cost = 1
+
+[media]
+upload_dir = "uploads"
+# 最大文件大小（字节），默认 10 MB
+max_file_size = 10485760
+allowed_mime_types = [
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "application/pdf",
+    "video/mp4",
+]
+
+[plugins]
+# 插件存放目录
+directory = "plugins"
+wasm_enabled = true
