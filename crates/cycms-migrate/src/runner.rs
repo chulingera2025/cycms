@@ -54,6 +54,116 @@ pub(crate) async fn apply_one(
     }
 }
 
+/// 返回按 `version` 降序排列的最近 `limit` 条已应用迁移（id, version, name）。
+pub(crate) async fn list_recent_applied(
+    db: &DatabasePool,
+    source: &str,
+    limit: i64,
+) -> Result<Vec<(i64, i64, String)>> {
+    match db {
+        DatabasePool::Postgres(pool) => sqlx::query_as::<_, (i64, i64, String)>(
+            "SELECT id, version, name FROM migration_records \
+             WHERE source = $1 AND status = 'applied' \
+             ORDER BY version DESC LIMIT $2",
+        )
+        .bind(source)
+        .bind(limit)
+        .fetch_all(pool)
+        .await
+        .map_err(map_db_error("failed to list recent applied migrations")),
+        DatabasePool::MySql(pool) => sqlx::query_as::<_, (i64, i64, String)>(
+            "SELECT id, version, name FROM migration_records \
+             WHERE source = ? AND status = 'applied' \
+             ORDER BY version DESC LIMIT ?",
+        )
+        .bind(source)
+        .bind(limit)
+        .fetch_all(pool)
+        .await
+        .map_err(map_db_error("failed to list recent applied migrations")),
+        DatabasePool::Sqlite(pool) => sqlx::query_as::<_, (i64, i64, String)>(
+            "SELECT id, version, name FROM migration_records \
+             WHERE source = ? AND status = 'applied' \
+             ORDER BY version DESC LIMIT ?",
+        )
+        .bind(source)
+        .bind(limit)
+        .fetch_all(pool)
+        .await
+        .map_err(map_db_error("failed to list recent applied migrations")),
+    }
+}
+
+/// 在事务内执行 down SQL 并把对应行标记为 `rolled_back`。
+pub(crate) async fn rollback_one(
+    db: &DatabasePool,
+    record_id: i64,
+    down_sql: &str,
+) -> Result<()> {
+    match db {
+        DatabasePool::Postgres(pool) => {
+            let mut tx = pool
+                .begin()
+                .await
+                .map_err(map_db_error("failed to begin rollback transaction"))?;
+            sqlx::raw_sql(down_sql)
+                .execute(&mut *tx)
+                .await
+                .map_err(map_db_error("failed to execute down migration"))?;
+            sqlx::query(
+                "UPDATE migration_records SET status = $1 WHERE id = $2",
+            )
+            .bind(MigrationStatus::RolledBack.as_str())
+            .bind(record_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_db_error("failed to mark record as rolled_back"))?;
+            tx.commit()
+                .await
+                .map_err(map_db_error("failed to commit rollback"))?;
+        }
+        DatabasePool::MySql(pool) => {
+            let mut tx = pool
+                .begin()
+                .await
+                .map_err(map_db_error("failed to begin rollback transaction"))?;
+            sqlx::raw_sql(down_sql)
+                .execute(&mut *tx)
+                .await
+                .map_err(map_db_error("failed to execute down migration"))?;
+            sqlx::query("UPDATE migration_records SET status = ? WHERE id = ?")
+                .bind(MigrationStatus::RolledBack.as_str())
+                .bind(record_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(map_db_error("failed to mark record as rolled_back"))?;
+            tx.commit()
+                .await
+                .map_err(map_db_error("failed to commit rollback"))?;
+        }
+        DatabasePool::Sqlite(pool) => {
+            let mut tx = pool
+                .begin()
+                .await
+                .map_err(map_db_error("failed to begin rollback transaction"))?;
+            sqlx::raw_sql(down_sql)
+                .execute(&mut *tx)
+                .await
+                .map_err(map_db_error("failed to execute down migration"))?;
+            sqlx::query("UPDATE migration_records SET status = ? WHERE id = ?")
+                .bind(MigrationStatus::RolledBack.as_str())
+                .bind(record_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(map_db_error("failed to mark record as rolled_back"))?;
+            tx.commit()
+                .await
+                .map_err(map_db_error("failed to commit rollback"))?;
+        }
+    }
+    Ok(())
+}
+
 async fn apply_postgres(
     pool: &PgPool,
     source: &str,

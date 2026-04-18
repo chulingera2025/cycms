@@ -64,8 +64,13 @@ impl MigrationEngine {
 
     /// 执行指定插件的迁移。
     ///
+    /// `source` 固定为插件名，因此同一套迁移文件在不同插件命名空间下可并存；
+    /// `migrations_dir` 是插件目录下的 `migrations/` 根（内部同样按方言分子目录）。
+    ///
+    /// TODO!!! 任务 15：由 `PluginManager` 在安装/升级阶段调用本函数。
+    ///
     /// # Errors
-    /// TODO!!! MIG-5 实现按 `plugin_name` 独立追踪并集成到 `PluginManager`。
+    /// 元表初始化、文件发现或单条迁移执行失败时均返回错误。
     pub async fn run_plugin_migrations(
         &self,
         plugin_name: &str,
@@ -74,13 +79,66 @@ impl MigrationEngine {
         self.run_migrations_for(plugin_name, migrations_dir).await
     }
 
-    /// 回滚指定来源的最近 `count` 条迁移。
+    /// 回滚指定来源的最近 `count` 条迁移（按 `version` 从大到小）。
+    ///
+    /// `migrations_root` 与 `run_*_migrations` 相同，用于在回滚时重新读取对应的
+    /// `.down.sql`；若 `.down.sql` 缺失则整体拒绝回滚。
     ///
     /// # Errors
-    /// TODO!!! MIG-5 实现基于 `.down.sql` 的倒序回滚。
-    #[allow(clippy::unused_async)]
-    pub async fn rollback(&self, _source: &str, _count: usize) -> Result<Vec<MigrationRecord>> {
-        todo!("TODO!!!: MIG-5 实现回滚")
+    /// 缺失 `.down.sql`、执行失败或元表更新失败均会返回错误。
+    pub async fn rollback(
+        &self,
+        source: &str,
+        migrations_root: &Path,
+        count: usize,
+    ) -> Result<Vec<MigrationRecord>> {
+        self.ensure_meta_table().await?;
+
+        let dir = resolve_driver_dir(self.db.db_type(), migrations_root);
+        let discovered = discovery::scan(&dir)?;
+        let by_version: std::collections::HashMap<i64, &DiscoveredMigration> =
+            discovered.iter().map(|m| (m.version, m)).collect();
+
+        let limit =
+            i64::try_from(count).map_err(|_| Error::BadRequest {
+                message: "rollback count exceeds i64 range".to_owned(),
+                source: None,
+            })?;
+        let targets = runner::list_recent_applied(&self.db, source, limit).await?;
+        if targets.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut rolled = Vec::with_capacity(targets.len());
+        for (record_id, version, name) in targets {
+            let migration = by_version.get(&version).ok_or_else(|| Error::NotFound {
+                message: format!(
+                    "migration file missing for rollback: source={source} version={version}"
+                ),
+            })?;
+            let down_sql = migration
+                .down_sql
+                .as_deref()
+                .ok_or_else(|| Error::BadRequest {
+                    message: format!(
+                        "migration has no .down.sql, cannot rollback: source={source} version={version}"
+                    ),
+                    source: None,
+                })?;
+
+            runner::rollback_one(&self.db, record_id, down_sql).await?;
+
+            rolled.push(MigrationRecord {
+                id: record_id,
+                version,
+                name,
+                source: source.to_owned(),
+                applied_at: chrono::Utc::now(),
+                execution_time_ms: 0,
+                status: crate::record::MigrationStatus::RolledBack,
+            });
+        }
+        Ok(rolled)
     }
 
     async fn run_migrations_for(
