@@ -386,6 +386,24 @@ version = "0.1.0"
 [[package]]
 name = "cycms-permission"
 version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "cycms-auth",
+ "cycms-config",
+ "cycms-core",
+ "cycms-db",
+ "cycms-migrate",
+ "http-body-util",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tower",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "cycms-plugin-api"
