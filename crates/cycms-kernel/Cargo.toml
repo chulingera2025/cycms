@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 cycms-core = { workspace = true }
 cycms-config = { workspace = true }
+cycms-db = { workspace = true }
 tokio = { workspace = true }
 
 [lints]

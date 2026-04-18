@@ -3,16 +3,17 @@ use std::sync::Arc;
 
 use cycms_config::AppConfig;
 use cycms_core::Result;
+use cycms_db::DatabasePool;
 
-// TODO!!!: 任务 2+ 各字段替换为真实子系统类型（ConfigManager、DatabasePool 等）
+// TODO!!!: 任务 3+ 余下占位字段逐步替换为真实子系统类型（EventBus、ServiceRegistry 等）
 
 /// 全局应用上下文，Kernel bootstrap 后在所有组件间共享。
 #[non_exhaustive]
 pub struct AppContext {
     /// 任务 2：真实应用配置对象。
     pub config: Arc<AppConfig>,
-    /// 占位：任务 3 替换为 `Arc<DatabasePool>`
-    pub db: Arc<PlaceholderService>,
+    /// 任务 3：多方言数据库连接池。
+    pub db: Arc<DatabasePool>,
     /// 占位：任务 7 替换为 `Arc<EventBus>`
     pub event_bus: Arc<PlaceholderService>,
     /// 占位：任务 9 替换为 `Arc<ServiceRegistry>`
@@ -56,11 +57,11 @@ impl Kernel {
     ///
     /// # Errors
     /// 任意子系统初始化失败时返回错误。
-    #[allow(clippy::unused_async)]
     pub async fn bootstrap(&self) -> Result<AppContext> {
+        let db = DatabasePool::connect(&self.config.database).await?;
         Ok(AppContext {
             config: Arc::new(self.config.clone()),
-            db: Arc::new(PlaceholderService),
+            db: Arc::new(db),
             event_bus: Arc::new(PlaceholderService),
             service_registry: Arc::new(PlaceholderService),
             plugin_manager: Arc::new(PlaceholderService),
