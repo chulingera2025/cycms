@@ -4,5 +4,7 @@
 //! 子系统在后续子任务中逐步填充。
 
 mod error;
+mod user;
 
 pub use error::AuthError;
+pub use user::{NewUserRow, User, UserRepository};
