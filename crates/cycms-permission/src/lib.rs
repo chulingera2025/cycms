@@ -9,6 +9,7 @@ mod model;
 mod parser;
 mod permission;
 mod role;
+mod seed;
 mod service;
 
 pub use error::PermissionError;
@@ -16,4 +17,5 @@ pub use model::{NewRoleRow, Permission, PermissionDefinition, PermissionScope, R
 pub use parser::{ParsedCode, parse_permission_code};
 pub use permission::PermissionRepository;
 pub use role::RoleRepository;
+pub use seed::{AUTHOR_ROLE, EDITOR_ROLE, seed_defaults};
 pub use service::{PermissionEngine, SUPER_ADMIN_ROLE};
