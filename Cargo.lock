@@ -247,6 +247,9 @@ dependencies = [
  "cycms-config",
  "cycms-core",
  "cycms-db",
+ "cycms-migrate",
+ "sqlx",
+ "tempfile",
  "tokio",
 ]
 

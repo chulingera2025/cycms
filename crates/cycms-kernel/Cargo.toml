@@ -9,7 +9,13 @@ license.workspace = true
 cycms-core = { workspace = true }
 cycms-config = { workspace = true }
 cycms-db = { workspace = true }
+cycms-migrate = { workspace = true }
 tokio = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+sqlx = { workspace = true }
+tempfile = "3"
 
 [lints]
 workspace = true

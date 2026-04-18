@@ -4,6 +4,7 @@ use std::sync::Arc;
 use cycms_config::AppConfig;
 use cycms_core::Result;
 use cycms_db::DatabasePool;
+use cycms_migrate::MigrationEngine;
 
 // TODO!!!: 任务 3+ 余下占位字段逐步替换为真实子系统类型（EventBus、ServiceRegistry 等）
 
@@ -55,13 +56,26 @@ impl Kernel {
     /// 初始化顺序：Config → DB → Migration → `EventBus` →
     /// `ServiceRegistry` → `PluginManager` → `ContentModel` → Auth → Permission → API
     ///
+    /// 当 `system_migrations_dir` 为 `Some` 时会执行系统迁移；传 `None` 跳过，适合只
+    /// 想构造上下文做诊断（例如 `cycms config show`）的调用方。
+    ///
     /// # Errors
     /// 任意子系统初始化失败时返回错误。
-    pub async fn bootstrap(&self) -> Result<AppContext> {
-        let db = DatabasePool::connect(&self.config.database).await?;
+    pub async fn bootstrap(
+        &self,
+        system_migrations_dir: Option<&Path>,
+    ) -> Result<AppContext> {
+        let db = Arc::new(DatabasePool::connect(&self.config.database).await?);
+
+        if let Some(dir) = system_migrations_dir {
+            MigrationEngine::new(Arc::clone(&db))
+                .run_system_migrations(dir)
+                .await?;
+        }
+
         Ok(AppContext {
             config: Arc::new(self.config.clone()),
-            db: Arc::new(db),
+            db,
             event_bus: Arc::new(PlaceholderService),
             service_registry: Arc::new(PlaceholderService),
             plugin_manager: Arc::new(PlaceholderService),
