@@ -1,4 +1,4 @@
-use crate::pool::{DatabasePool, DatabaseType};
+use crate::pool::DatabaseType;
 
 /// JSON path / column 校验失败的细分错误。
 #[derive(Debug, thiserror::Error)]
@@ -21,14 +21,14 @@ pub enum JsonPathError {
 /// # Errors
 /// column 或 path 含非法字符时返回 [`JsonPathError`]，防止用户输入拼入 SQL 造成注入。
 pub fn json_field_query(
-    pool: &DatabasePool,
+    db_type: DatabaseType,
     column: &str,
     path: &str,
 ) -> Result<String, JsonPathError> {
     let column = validate_column(column)?;
     let segments = parse_path(path)?;
 
-    Ok(match pool.db_type() {
+    Ok(match db_type {
         DatabaseType::Postgres => {
             let mut joined = String::new();
             for segment in &segments {
@@ -57,7 +57,7 @@ pub fn json_field_query(
 /// # Errors
 /// column 或 path 含非法字符时返回 [`JsonPathError`]。
 pub fn json_field_set(
-    pool: &DatabasePool,
+    db_type: DatabaseType,
     column: &str,
     path: &str,
     value_placeholder: &str,
@@ -65,7 +65,7 @@ pub fn json_field_set(
     let column = validate_column(column)?;
     let segments = parse_path(path)?;
 
-    Ok(match pool.db_type() {
+    Ok(match db_type {
         DatabaseType::Postgres => {
             let pg_path = segments.join(",");
             format!("jsonb_set(\"{column}\", '{{{pg_path}}}', {value_placeholder})")
