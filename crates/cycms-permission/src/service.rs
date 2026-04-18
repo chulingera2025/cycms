@@ -4,7 +4,7 @@ use cycms_core::{Error, Result};
 use cycms_db::DatabasePool;
 
 use crate::error::PermissionError;
-use crate::model::PermissionScope;
+use crate::model::{Permission, PermissionDefinition, PermissionScope};
 use crate::parser::parse_permission_code;
 use crate::permission::PermissionRepository;
 use crate::role::RoleRepository;
@@ -116,6 +116,45 @@ impl PermissionEngine {
         } else {
             Err(PermissionError::Forbidden.into())
         }
+    }
+
+    /// 批量注册权限点（系统种子或插件启动时调用），幂等。
+    ///
+    /// 每条 [`PermissionDefinition`] 的 `(domain, resource, action)` 会被再次通过
+    /// [`parse_permission_code`] 校验，保证不会把非法段写进 DB。`source` 统一覆盖，
+    /// 无论 def 内部是否带 source 字段（这个结构目前不带，但未来若扩展可避免 drift）。
+    ///
+    /// # Errors
+    /// - `source` 为空 → [`cycms_core::Error::ValidationError`]
+    /// - 任意 def 字段非法 → [`cycms_core::Error::ValidationError`]
+    /// - DB 故障 → [`cycms_core::Error::Internal`]
+    pub async fn register_permissions(
+        &self,
+        source: &str,
+        defs: Vec<PermissionDefinition>,
+    ) -> Result<Vec<Permission>> {
+        let source = source.trim();
+        if source.is_empty() {
+            return Err(
+                PermissionError::InputValidation("source must not be empty".to_owned()).into(),
+            );
+        }
+        for def in &defs {
+            let code = format!("{}.{}.{}", def.domain, def.resource, def.action);
+            parse_permission_code(&code)?;
+        }
+        self.permissions.upsert_many(source, &defs).await
+    }
+
+    /// 按 `source` 批量删除权限，返回被删行数。通常用于插件卸载。
+    ///
+    /// TODO!!!: 任务 15 `PluginManager` 卸载流程集成时，需要级联清理 `role_permissions`
+    /// 中对应记录，v0.1 暂由 FK `ON DELETE CASCADE` 处理。
+    ///
+    /// # Errors
+    /// DB 故障 → [`cycms_core::Error::Internal`]。
+    pub async fn unregister_permissions_by_source(&self, source: &str) -> Result<u64> {
+        self.permissions.delete_by_source(source).await
     }
 
     async fn fetch_scopes(
