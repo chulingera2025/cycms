@@ -18,6 +18,7 @@ sha2 = "0.10"
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tempfile = "3"
+cycms-config = { workspace = true }
 
 [lints]
 workspace = true
