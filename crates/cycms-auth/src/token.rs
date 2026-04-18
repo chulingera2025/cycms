@@ -165,8 +165,8 @@ mod tests {
         let issued = codec.issue_pair("user-1", vec![]).unwrap();
         // 把最后一个 base64 字符替换为另一个合法字符，破坏签名
         let mut tampered = issued.pair.access_token;
-        tampered.pop();
-        tampered.push('A');
+        let last = tampered.pop().unwrap();
+        tampered.push(if last == 'A' { 'B' } else { 'A' });
         let err = codec.decode(&tampered, TokenType::Access).unwrap_err();
         assert!(matches!(err, AuthError::TokenInvalid));
     }

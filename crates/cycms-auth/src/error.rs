@@ -24,6 +24,9 @@ pub enum AuthError {
     #[error("password policy violation: {0}")]
     PasswordPolicy(String),
 
+    #[error("input validation error: {0}")]
+    InputValidation(String),
+
     #[error("username or email already exists")]
     UserAlreadyExists,
 
@@ -51,10 +54,12 @@ impl From<AuthError> for Error {
             | AuthError::TokenRevoked => Self::Unauthorized {
                 message: "invalid credentials".to_owned(),
             },
-            AuthError::PasswordPolicy(message) => Self::ValidationError {
-                message,
-                details: None,
-            },
+            AuthError::PasswordPolicy(message) | AuthError::InputValidation(message) => {
+                Self::ValidationError {
+                    message,
+                    details: None,
+                }
+            }
             AuthError::UserAlreadyExists => Self::Conflict {
                 message: "username or email already exists".to_owned(),
             },

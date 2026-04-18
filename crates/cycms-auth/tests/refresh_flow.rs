@@ -110,8 +110,9 @@ async fn refresh_with_tampered_token_is_rejected() {
     let pair = login_fresh(&engine, "bob", "StrongPass1!").await;
 
     let mut tampered = pair.refresh_token.clone();
-    tampered.pop();
-    tampered.push('A');
+    let last = tampered.pop().unwrap();
+    // 替换为任何与原字符不同的合法 base64url 字符，避免 pop+push 同字符造成无效篡改
+    tampered.push(if last == 'A' { 'B' } else { 'A' });
     let err = engine.refresh(&tampered).await.unwrap_err();
     assert!(matches!(err, Error::Unauthorized { .. }));
 }

@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 use crate::error::AuthError;
 use crate::password::{hash_password, verify_password};
 use crate::revoked::RevokedTokenRepository;
+use crate::seed::CreateUserInput;
 use crate::token::{JwtCodec, TokenPair};
-use crate::user::UserRepository;
+use crate::user::{NewUserRow, User, UserRepository};
 
 /// 登录请求 DTO，字段固定为 username + password（v0.1 不支持 email 登录）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,6 +149,38 @@ impl AuthEngine {
         self.revoked.revoke(&claims.jti, old_exp, "rotated").await?;
 
         Ok(issued.pair)
+    }
+
+    /// 创建新用户，执行 [`CreateUserInput::validate`] 后使用 Argon2id 哈希密码。
+    ///
+    /// # Errors
+    /// - 字段校验 / 密码策略失败 → [`cycms_core::Error::ValidationError`]
+    /// - username / email 冲突 → [`cycms_core::Error::Conflict`]
+    /// - 其他 DB 或哈希错误 → [`cycms_core::Error::Internal`]
+    pub async fn create_user(&self, input: CreateUserInput) -> Result<User> {
+        input.validate()?;
+        let phc = hash_password(&input.password, &self.argon2_cfg)?;
+        self.users
+            .create(NewUserRow {
+                username: input.username,
+                email: input.email,
+                password_hash: phc,
+                is_active: true,
+            })
+            .await
+    }
+
+    /// 当且仅当系统尚无任何用户时创建初始管理员。此方法**不**绑定角色，角色绑定
+    /// 由调用方（任务 17 CLI `cycms seed admin`）在 `super_admin` 种子数据就绪后执行。
+    ///
+    /// # Errors
+    /// - 已存在任意用户 → [`cycms_core::Error::Conflict`]
+    /// - 输入校验 / 密码策略 / DB 错误 → 对应分类映射
+    pub async fn setup_admin(&self, input: CreateUserInput) -> Result<User> {
+        if self.users.count().await? > 0 {
+            return Err(AuthError::AdminAlreadyExists.into());
+        }
+        self.create_user(input).await
     }
 }
 
