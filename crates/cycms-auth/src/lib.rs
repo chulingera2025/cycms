@@ -5,6 +5,7 @@
 
 mod claims;
 mod error;
+mod middleware;
 mod password;
 mod revoked;
 mod seed;
@@ -14,6 +15,7 @@ mod user;
 
 pub use claims::{AuthClaims, TokenType};
 pub use error::AuthError;
+pub use middleware::{Authenticated, auth_middleware};
 pub use password::{PasswordPolicy, hash_password, verify_password};
 pub use revoked::RevokedTokenRepository;
 pub use seed::CreateUserInput;
