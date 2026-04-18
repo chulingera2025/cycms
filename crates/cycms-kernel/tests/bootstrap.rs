@@ -7,8 +7,7 @@ use cycms_kernel::Kernel;
 use tempfile::tempdir;
 
 fn workspace_system_migrations() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../cycms-migrate/migrations/system")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cycms-migrate/migrations/system")
 }
 
 #[tokio::test]
@@ -45,6 +44,9 @@ idle_timeout_secs = 60
             .await
             .unwrap();
     assert_eq!(count, 1, "users table must exist after bootstrap migration");
+
+    // AuthEngine 已挂入上下文：count_users 应可调用并返回 0
+    assert_eq!(ctx.auth_engine.users().count().await.unwrap(), 0);
 }
 
 #[tokio::test]
@@ -70,10 +72,9 @@ idle_timeout_secs = 60
     let DatabasePool::Sqlite(inner) = ctx.db.as_ref() else {
         panic!("expected sqlite pool");
     };
-    let (count,): (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
-            .fetch_one(inner)
-            .await
-            .unwrap();
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
+        .fetch_one(inner)
+        .await
+        .unwrap();
     assert_eq!(count, 0, "no migrations run => no tables");
 }

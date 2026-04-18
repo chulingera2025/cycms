@@ -1,12 +1,13 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use cycms_auth::AuthEngine;
 use cycms_config::AppConfig;
 use cycms_core::Result;
 use cycms_db::DatabasePool;
 use cycms_migrate::MigrationEngine;
 
-// TODO!!!: 任务 3+ 余下占位字段逐步替换为真实子系统类型（EventBus、ServiceRegistry 等）
+// TODO!!!: 任务 6+ 余下占位字段逐步替换为真实子系统类型（EventBus、ServiceRegistry 等）
 
 /// 全局应用上下文，Kernel bootstrap 后在所有组件间共享。
 #[non_exhaustive]
@@ -15,6 +16,8 @@ pub struct AppContext {
     pub config: Arc<AppConfig>,
     /// 任务 3：多方言数据库连接池。
     pub db: Arc<DatabasePool>,
+    /// 任务 5：认证引擎，提供登录/刷新/初始管理员/Token 校验等能力。
+    pub auth_engine: Arc<AuthEngine>,
     /// 占位：任务 7 替换为 `Arc<EventBus>`
     pub event_bus: Arc<PlaceholderService>,
     /// 占位：任务 9 替换为 `Arc<ServiceRegistry>`
@@ -61,10 +64,7 @@ impl Kernel {
     ///
     /// # Errors
     /// 任意子系统初始化失败时返回错误。
-    pub async fn bootstrap(
-        &self,
-        system_migrations_dir: Option<&Path>,
-    ) -> Result<AppContext> {
+    pub async fn bootstrap(&self, system_migrations_dir: Option<&Path>) -> Result<AppContext> {
         let db = Arc::new(DatabasePool::connect(&self.config.database).await?);
 
         if let Some(dir) = system_migrations_dir {
@@ -73,9 +73,12 @@ impl Kernel {
                 .await?;
         }
 
+        let auth_engine = Arc::new(AuthEngine::new(Arc::clone(&db), self.config.auth.clone())?);
+
         Ok(AppContext {
             config: Arc::new(self.config.clone()),
             db,
+            auth_engine,
             event_bus: Arc::new(PlaceholderService),
             service_registry: Arc::new(PlaceholderService),
             plugin_manager: Arc::new(PlaceholderService),
