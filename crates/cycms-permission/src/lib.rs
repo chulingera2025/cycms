@@ -9,9 +9,11 @@ mod model;
 mod parser;
 mod permission;
 mod role;
+mod service;
 
 pub use error::PermissionError;
 pub use model::{NewRoleRow, Permission, PermissionDefinition, PermissionScope, Role};
 pub use parser::{ParsedCode, parse_permission_code};
 pub use permission::PermissionRepository;
 pub use role::RoleRepository;
+pub use service::{PermissionEngine, SUPER_ADMIN_ROLE};
