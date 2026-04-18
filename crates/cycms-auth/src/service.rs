@@ -112,6 +112,43 @@ impl AuthEngine {
         }
         Ok(claims)
     }
+
+    /// 使用 refresh token 轮换 token 对：颁发新的 access+refresh，
+    /// 并把旧 refresh 的 jti 写入 `revoked_tokens` 以阻止重放。
+    ///
+    /// 当旧 refresh 已经被吊销（即第二次复用）时直接 Unauthorized；
+    /// 完整账号下线（`token_version` 方案）推迟到后续版本实现。
+    ///
+    /// # Errors
+    /// - 解码失败 / 类型错配 / 已吊销 / 用户不存在或被禁用 → [`cycms_core::Error::Unauthorized`]
+    /// - DB / JWT 故障 → [`cycms_core::Error::Internal`]
+    pub async fn refresh(&self, refresh_token: &str) -> Result<TokenPair> {
+        let claims = self
+            .jwt
+            .decode(refresh_token, crate::claims::TokenType::Refresh)?;
+
+        if self.revoked.is_revoked(&claims.jti).await? {
+            return Err(AuthError::TokenRevoked.into());
+        }
+
+        let user = self
+            .users
+            .find_by_id(&claims.sub)
+            .await?
+            .ok_or(AuthError::InvalidCredentials)?;
+        if !user.is_active {
+            return Err(AuthError::AccountDisabled.into());
+        }
+
+        let roles = self.users.fetch_roles(&user.id).await?;
+        let issued = self.jwt.issue_pair(&user.id, roles)?;
+
+        let old_exp = chrono::DateTime::<chrono::Utc>::from_timestamp(claims.exp, 0)
+            .unwrap_or_else(chrono::Utc::now);
+        self.revoked.revoke(&claims.jti, old_exp, "rotated").await?;
+
+        Ok(issued.pair)
+    }
 }
 
 /// Dummy 明文，用于 [`AuthEngine::new`] 预热时间常数哈希。
