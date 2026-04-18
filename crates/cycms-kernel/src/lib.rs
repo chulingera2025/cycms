@@ -6,8 +6,9 @@ use cycms_config::AppConfig;
 use cycms_core::Result;
 use cycms_db::DatabasePool;
 use cycms_migrate::MigrationEngine;
+use cycms_permission::PermissionEngine;
 
-// TODO!!!: 任务 6+ 余下占位字段逐步替换为真实子系统类型（EventBus、ServiceRegistry 等）
+// TODO!!!: 任务 7+ 余下占位字段逐步替换为真实子系统类型（EventBus、ServiceRegistry 等）
 
 /// 全局应用上下文，Kernel bootstrap 后在所有组件间共享。
 #[non_exhaustive]
@@ -18,6 +19,8 @@ pub struct AppContext {
     pub db: Arc<DatabasePool>,
     /// 任务 5：认证引擎，提供登录/刷新/初始管理员/Token 校验等能力。
     pub auth_engine: Arc<AuthEngine>,
+    /// 任务 6：权限引擎，提供角色/权限 CRUD 与 `check_permission` 判定。
+    pub permission_engine: Arc<PermissionEngine>,
     /// 占位：任务 7 替换为 `Arc<EventBus>`
     pub event_bus: Arc<PlaceholderService>,
     /// 占位：任务 9 替换为 `Arc<ServiceRegistry>`
@@ -56,8 +59,8 @@ impl Kernel {
 
     /// 初始化所有子系统并返回 [`AppContext`]。
     ///
-    /// 初始化顺序：Config → DB → Migration → `EventBus` →
-    /// `ServiceRegistry` → `PluginManager` → `ContentModel` → Auth → Permission → API
+    /// 初始化顺序：Config → DB → Migration → Auth → Permission → `EventBus` →
+    /// `ServiceRegistry` → `PluginManager` → `ContentModel` → API
     ///
     /// 当 `system_migrations_dir` 为 `Some` 时会执行系统迁移；传 `None` 跳过，适合只
     /// 想构造上下文做诊断（例如 `cycms config show`）的调用方。
@@ -74,11 +77,13 @@ impl Kernel {
         }
 
         let auth_engine = Arc::new(AuthEngine::new(Arc::clone(&db), self.config.auth.clone())?);
+        let permission_engine = Arc::new(PermissionEngine::new(Arc::clone(&db)));
 
         Ok(AppContext {
             config: Arc::new(self.config.clone()),
             db,
             auth_engine,
+            permission_engine,
             event_bus: Arc::new(PlaceholderService),
             service_registry: Arc::new(PlaceholderService),
             plugin_manager: Arc::new(PlaceholderService),

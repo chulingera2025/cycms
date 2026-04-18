@@ -11,6 +11,7 @@ cycms-config = { workspace = true }
 cycms-db = { workspace = true }
 cycms-migrate = { workspace = true }
 cycms-auth = { workspace = true }
+cycms-permission = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]

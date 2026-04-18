@@ -47,6 +47,16 @@ idle_timeout_secs = 60
 
     // AuthEngine 已挂入上下文：count_users 应可调用并返回 0
     assert_eq!(ctx.auth_engine.users().count().await.unwrap(), 0);
+
+    // PermissionEngine 已挂入上下文：空迁移环境下 roles 表可读，初始零行
+    assert!(
+        ctx.permission_engine
+            .roles()
+            .list()
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]

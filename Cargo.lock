@@ -350,6 +350,7 @@ dependencies = [
  "cycms-core",
  "cycms-db",
  "cycms-migrate",
+ "cycms-permission",
  "sqlx",
  "tempfile",
  "tokio",
