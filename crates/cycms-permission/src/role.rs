@@ -302,24 +302,20 @@ impl RoleRepository {
                 .map_err(PermissionError::Database)?;
             }
             DatabasePool::MySql(pool) => {
-                sqlx::query(
-                    "DELETE FROM role_permissions WHERE role_id = ? AND permission_id = ?",
-                )
-                .bind(role_id)
-                .bind(permission_id)
-                .execute(pool)
-                .await
-                .map_err(PermissionError::Database)?;
+                sqlx::query("DELETE FROM role_permissions WHERE role_id = ? AND permission_id = ?")
+                    .bind(role_id)
+                    .bind(permission_id)
+                    .execute(pool)
+                    .await
+                    .map_err(PermissionError::Database)?;
             }
             DatabasePool::Sqlite(pool) => {
-                sqlx::query(
-                    "DELETE FROM role_permissions WHERE role_id = ? AND permission_id = ?",
-                )
-                .bind(role_id)
-                .bind(permission_id)
-                .execute(pool)
-                .await
-                .map_err(PermissionError::Database)?;
+                sqlx::query("DELETE FROM role_permissions WHERE role_id = ? AND permission_id = ?")
+                    .bind(role_id)
+                    .bind(permission_id)
+                    .execute(pool)
+                    .await
+                    .map_err(PermissionError::Database)?;
             }
         }
         Ok(())
@@ -369,12 +365,14 @@ impl RoleRepository {
     pub async fn unbind_user(&self, user_id: &str, role_id: &str) -> Result<()> {
         match self.db.as_ref() {
             DatabasePool::Postgres(pool) => {
-                sqlx::query("DELETE FROM user_roles WHERE user_id = $1::UUID AND role_id = $2::UUID")
-                    .bind(user_id)
-                    .bind(role_id)
-                    .execute(pool)
-                    .await
-                    .map_err(PermissionError::Database)?;
+                sqlx::query(
+                    "DELETE FROM user_roles WHERE user_id = $1::UUID AND role_id = $2::UUID",
+                )
+                .bind(user_id)
+                .bind(role_id)
+                .execute(pool)
+                .await
+                .map_err(PermissionError::Database)?;
             }
             DatabasePool::MySql(pool) => {
                 sqlx::query("DELETE FROM user_roles WHERE user_id = ? AND role_id = ?")
@@ -399,8 +397,7 @@ impl RoleRepository {
 
 const PG_SELECT_ALL: &str =
     "SELECT id::TEXT AS id, name, description, is_system, created_at FROM roles ORDER BY name";
-const PG_SELECT_WHERE_ID: &str =
-    "SELECT id::TEXT AS id, name, description, is_system, created_at FROM roles WHERE id = $1::UUID";
+const PG_SELECT_WHERE_ID: &str = "SELECT id::TEXT AS id, name, description, is_system, created_at FROM roles WHERE id = $1::UUID";
 const PG_SELECT_WHERE_NAME: &str =
     "SELECT id::TEXT AS id, name, description, is_system, created_at FROM roles WHERE name = $1";
 

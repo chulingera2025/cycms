@@ -262,12 +262,14 @@ impl PermissionRepository {
     /// DB 错误 → [`cycms_core::Error::Internal`]。
     pub async fn delete_by_source(&self, source: &str) -> Result<u64> {
         let affected = match self.db.as_ref() {
-            DatabasePool::Postgres(pool) => sqlx::query("DELETE FROM permissions WHERE source = $1")
-                .bind(source)
-                .execute(pool)
-                .await
-                .map_err(PermissionError::Database)?
-                .rows_affected(),
+            DatabasePool::Postgres(pool) => {
+                sqlx::query("DELETE FROM permissions WHERE source = $1")
+                    .bind(source)
+                    .execute(pool)
+                    .await
+                    .map_err(PermissionError::Database)?
+                    .rows_affected()
+            }
             DatabasePool::MySql(pool) => sqlx::query("DELETE FROM permissions WHERE source = ?")
                 .bind(source)
                 .execute(pool)
@@ -346,31 +348,24 @@ impl PermissionRepository {
     }
 }
 
-const PG_SELECT_WHERE_ID: &str =
-    "SELECT id::TEXT AS id, domain, resource, action, scope, source FROM permissions WHERE id = $1::UUID";
-const PG_FIND_BY_CODE: &str =
-    "SELECT id::TEXT AS id, domain, resource, action, scope, source FROM permissions \
+const PG_SELECT_WHERE_ID: &str = "SELECT id::TEXT AS id, domain, resource, action, scope, source FROM permissions WHERE id = $1::UUID";
+const PG_FIND_BY_CODE: &str = "SELECT id::TEXT AS id, domain, resource, action, scope, source FROM permissions \
      WHERE domain = $1 AND resource = $2 AND action = $3 AND scope = $4";
-const PG_LIST_BY_SOURCE: &str =
-    "SELECT id::TEXT AS id, domain, resource, action, scope, source FROM permissions \
+const PG_LIST_BY_SOURCE: &str = "SELECT id::TEXT AS id, domain, resource, action, scope, source FROM permissions \
      WHERE source = $1 ORDER BY domain, resource, action, scope";
 
 const MYSQL_SELECT_WHERE_ID: &str =
     "SELECT id, domain, resource, action, scope, source FROM permissions WHERE id = ?";
-const MYSQL_FIND_BY_CODE: &str =
-    "SELECT id, domain, resource, action, scope, source FROM permissions \
+const MYSQL_FIND_BY_CODE: &str = "SELECT id, domain, resource, action, scope, source FROM permissions \
      WHERE domain = ? AND resource = ? AND action = ? AND scope = ?";
-const MYSQL_LIST_BY_SOURCE: &str =
-    "SELECT id, domain, resource, action, scope, source FROM permissions \
+const MYSQL_LIST_BY_SOURCE: &str = "SELECT id, domain, resource, action, scope, source FROM permissions \
      WHERE source = ? ORDER BY domain, resource, action, scope";
 
 const SQLITE_SELECT_WHERE_ID: &str =
     "SELECT id, domain, resource, action, scope, source FROM permissions WHERE id = ?";
-const SQLITE_FIND_BY_CODE: &str =
-    "SELECT id, domain, resource, action, scope, source FROM permissions \
+const SQLITE_FIND_BY_CODE: &str = "SELECT id, domain, resource, action, scope, source FROM permissions \
      WHERE domain = ? AND resource = ? AND action = ? AND scope = ?";
-const SQLITE_LIST_BY_SOURCE: &str =
-    "SELECT id, domain, resource, action, scope, source FROM permissions \
+const SQLITE_LIST_BY_SOURCE: &str = "SELECT id, domain, resource, action, scope, source FROM permissions \
      WHERE source = ? ORDER BY domain, resource, action, scope";
 
 fn pg_row_to_permission(row: &PgRow) -> std::result::Result<Permission, PermissionError> {
@@ -379,9 +374,7 @@ fn pg_row_to_permission(row: &PgRow) -> std::result::Result<Permission, Permissi
     Ok(Permission {
         id: row.try_get("id").map_err(PermissionError::Database)?,
         domain: row.try_get("domain").map_err(PermissionError::Database)?,
-        resource: row
-            .try_get("resource")
-            .map_err(PermissionError::Database)?,
+        resource: row.try_get("resource").map_err(PermissionError::Database)?,
         action: row.try_get("action").map_err(PermissionError::Database)?,
         scope,
         source: row.try_get("source").map_err(PermissionError::Database)?,
@@ -394,9 +387,7 @@ fn mysql_row_to_permission(row: &MySqlRow) -> std::result::Result<Permission, Pe
     Ok(Permission {
         id: row.try_get("id").map_err(PermissionError::Database)?,
         domain: row.try_get("domain").map_err(PermissionError::Database)?,
-        resource: row
-            .try_get("resource")
-            .map_err(PermissionError::Database)?,
+        resource: row.try_get("resource").map_err(PermissionError::Database)?,
         action: row.try_get("action").map_err(PermissionError::Database)?,
         scope,
         source: row.try_get("source").map_err(PermissionError::Database)?,
@@ -409,9 +400,7 @@ fn sqlite_row_to_permission(row: &SqliteRow) -> std::result::Result<Permission, 
     Ok(Permission {
         id: row.try_get("id").map_err(PermissionError::Database)?,
         domain: row.try_get("domain").map_err(PermissionError::Database)?,
-        resource: row
-            .try_get("resource")
-            .map_err(PermissionError::Database)?,
+        resource: row.try_get("resource").map_err(PermissionError::Database)?,
         action: row.try_get("action").map_err(PermissionError::Database)?,
         scope,
         source: row.try_get("source").map_err(PermissionError::Database)?,

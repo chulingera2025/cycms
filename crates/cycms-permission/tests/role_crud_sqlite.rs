@@ -192,16 +192,14 @@ async fn bind_unbind_user_idempotent() {
     let DatabasePool::Sqlite(inner) = pool.as_ref() else {
         panic!("expected sqlite pool");
     };
-    sqlx::query(
-        "INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)",
-    )
-    .bind("user-0000-0001")
-    .bind("user_a")
-    .bind("a@example.test")
-    .bind("$argon2id$dummy")
-    .execute(inner)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)")
+        .bind("user-0000-0001")
+        .bind("user_a")
+        .bind("a@example.test")
+        .bind("$argon2id$dummy")
+        .execute(inner)
+        .await
+        .unwrap();
 
     let role = role_repo
         .create(NewRoleRow {
@@ -221,14 +219,13 @@ async fn bind_unbind_user_idempotent() {
         .await
         .unwrap();
 
-    let (count,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM user_roles WHERE user_id = ? AND role_id = ?",
-    )
-    .bind("user-0000-0001")
-    .bind(&role.id)
-    .fetch_one(inner)
-    .await
-    .unwrap();
+    let (count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM user_roles WHERE user_id = ? AND role_id = ?")
+            .bind("user-0000-0001")
+            .bind(&role.id)
+            .fetch_one(inner)
+            .await
+            .unwrap();
     assert_eq!(count, 1);
 
     role_repo

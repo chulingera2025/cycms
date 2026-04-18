@@ -140,10 +140,7 @@ async fn seed_role(
             .find_by_code_and_scope(domain, resource, action, *scope)
             .await?
             .ok_or(PermissionError::PermissionNotFound)?;
-        engine
-            .roles()
-            .attach_permission(&role.id, &perm.id)
-            .await?;
+        engine.roles().attach_permission(&role.id, &perm.id).await?;
     }
     Ok(())
 }

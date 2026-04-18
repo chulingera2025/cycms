@@ -12,8 +12,8 @@ use cycms_config::{DatabaseConfig, DatabaseDriver};
 use cycms_db::DatabasePool;
 use cycms_migrate::MigrationEngine;
 use cycms_permission::{
-    NewRoleRow, PermissionDefinition, PermissionEngine, PermissionMiddlewareState,
-    PermissionScope, SUPER_ADMIN_ROLE, require_permission_middleware,
+    NewRoleRow, PermissionDefinition, PermissionEngine, PermissionMiddlewareState, PermissionScope,
+    SUPER_ADMIN_ROLE, require_permission_middleware,
 };
 use tower::ServiceExt;
 
@@ -130,8 +130,15 @@ async fn request_without_auth_claims_returns_401() {
 async fn request_with_auth_but_without_permission_returns_403() {
     let pool = fresh_sqlite_pool().await;
     let engine = Arc::new(PermissionEngine::new(pool));
-    seed_role_with_permission(&engine, "editor", "system", "post", "read", PermissionScope::All)
-        .await;
+    seed_role_with_permission(
+        &engine,
+        "editor",
+        "system",
+        "post",
+        "read",
+        PermissionScope::All,
+    )
+    .await;
 
     let claims = make_claims("u1", vec!["ghost".to_owned()]);
     let app = build_router(engine, "system.post.read", Some(claims));
@@ -147,8 +154,15 @@ async fn request_with_auth_but_without_permission_returns_403() {
 async fn request_with_permission_returns_200() {
     let pool = fresh_sqlite_pool().await;
     let engine = Arc::new(PermissionEngine::new(pool));
-    seed_role_with_permission(&engine, "editor", "system", "post", "read", PermissionScope::All)
-        .await;
+    seed_role_with_permission(
+        &engine,
+        "editor",
+        "system",
+        "post",
+        "read",
+        PermissionScope::All,
+    )
+    .await;
 
     let claims = make_claims("u1", vec!["editor".to_owned()]);
     let app = build_router(engine, "system.post.read", Some(claims));

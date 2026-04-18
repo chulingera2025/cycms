@@ -28,7 +28,10 @@ fn rejects_segments_over_100_chars() {
     let long_domain: String = "a".repeat(101);
     let code = format!("{long_domain}.post.read");
     let err = parse_permission_code(&code).unwrap_err();
-    assert!(matches!(err, cycms_permission::PermissionError::InputValidation(_)));
+    assert!(matches!(
+        err,
+        cycms_permission::PermissionError::InputValidation(_)
+    ));
 }
 
 #[test]

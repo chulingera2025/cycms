@@ -237,11 +237,7 @@ impl PermissionEngine {
     }
 }
 
-fn evaluate_scopes(
-    scopes: &[PermissionScope],
-    user_id: &str,
-    owner_id: Option<&str>,
-) -> bool {
+fn evaluate_scopes(scopes: &[PermissionScope], user_id: &str, owner_id: Option<&str>) -> bool {
     if scopes.contains(&PermissionScope::All) {
         return true;
     }
@@ -282,16 +278,8 @@ mod tests {
 
     #[test]
     fn evaluate_own_requires_match() {
-        assert!(evaluate_scopes(
-            &[PermissionScope::Own],
-            "u1",
-            Some("u1"),
-        ));
-        assert!(!evaluate_scopes(
-            &[PermissionScope::Own],
-            "u1",
-            Some("u2"),
-        ));
+        assert!(evaluate_scopes(&[PermissionScope::Own], "u1", Some("u1"),));
+        assert!(!evaluate_scopes(&[PermissionScope::Own], "u1", Some("u2"),));
         assert!(!evaluate_scopes(&[PermissionScope::Own], "u1", None));
     }
 

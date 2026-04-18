@@ -5,9 +5,7 @@ use cycms_config::{DatabaseConfig, DatabaseDriver};
 use cycms_core::Error;
 use cycms_db::DatabasePool;
 use cycms_migrate::MigrationEngine;
-use cycms_permission::{
-    NewRoleRow, PermissionDefinition, PermissionEngine, PermissionScope,
-};
+use cycms_permission::{NewRoleRow, PermissionDefinition, PermissionEngine, PermissionScope};
 
 fn system_migrations_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cycms-migrate/migrations/system")
@@ -205,12 +203,7 @@ async fn role_with_own_scope_denied_when_owner_missing() {
     .await;
 
     let pass = engine
-        .check_permission(
-            "user-1",
-            &["author".to_owned()],
-            "system.post.update",
-            None,
-        )
+        .check_permission("user-1", &["author".to_owned()], "system.post.update", None)
         .await
         .unwrap();
     assert!(!pass);
@@ -289,12 +282,7 @@ async fn require_permission_returns_forbidden_on_deny() {
     let pool = fresh_sqlite_pool().await;
     let engine = PermissionEngine::new(pool);
     let err = engine
-        .require_permission(
-            "user-1",
-            &["no_role".to_owned()],
-            "system.post.read",
-            None,
-        )
+        .require_permission("user-1", &["no_role".to_owned()], "system.post.read", None)
         .await
         .unwrap_err();
     assert!(matches!(err, Error::Forbidden { .. }));
