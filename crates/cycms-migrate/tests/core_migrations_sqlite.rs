@@ -75,6 +75,9 @@ async fn core_migrations_apply_on_sqlite_and_create_all_tables() {
                 .fetch_one(inner)
                 .await
                 .unwrap();
-        assert_eq!(count, 0, "table `{expected}` should be dropped after rollback");
+        assert_eq!(
+            count, 0,
+            "table `{expected}` should be dropped after rollback"
+        );
     }
 }

@@ -8,8 +8,7 @@ use cycms_db::DatabasePool;
 use cycms_migrate::MigrationEngine;
 
 fn system_migrations_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../cycms-migrate/migrations/system")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cycms-migrate/migrations/system")
 }
 
 async fn fresh_sqlite_pool() -> Arc<DatabasePool> {
@@ -60,7 +59,11 @@ async fn create_then_find_round_trip() {
     let by_id = repo.find_by_id(&user.id).await.unwrap().unwrap();
     assert_eq!(by_id.id, user.id);
 
-    let by_name = repo.find_by_username(&user.username).await.unwrap().unwrap();
+    let by_name = repo
+        .find_by_username(&user.username)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(by_name.id, user.id);
 }
 
@@ -69,7 +72,12 @@ async fn find_missing_returns_none() {
     let pool = fresh_sqlite_pool().await;
     let repo = UserRepository::new(pool);
 
-    assert!(repo.find_by_id("00000000-0000-0000-0000-000000000000").await.unwrap().is_none());
+    assert!(
+        repo.find_by_id("00000000-0000-0000-0000-000000000000")
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert!(repo.find_by_username("ghost").await.unwrap().is_none());
 }
 

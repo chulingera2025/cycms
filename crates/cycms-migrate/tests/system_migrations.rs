@@ -82,17 +82,21 @@ async fn run_system_migrations_rolls_back_on_failure_and_stops() {
 
     let (pool, engine) = build_engine().await;
     let err = engine.run_system_migrations(root.path()).await;
-    assert!(err.is_err(), "second migration must fail on duplicate table");
+    assert!(
+        err.is_err(),
+        "second migration must fail on duplicate table"
+    );
 
     let DatabasePool::Sqlite(inner) = pool.as_ref() else {
         panic!("expected sqlite pool");
     };
     // 第一条成功（在独立事务里提交），第二条失败且未写入记录。
-    let versions: Vec<(i64,)> =
-        sqlx::query_as("SELECT version FROM migration_records WHERE source='system' ORDER BY version")
-            .fetch_all(inner)
-            .await
-            .unwrap();
+    let versions: Vec<(i64,)> = sqlx::query_as(
+        "SELECT version FROM migration_records WHERE source='system' ORDER BY version",
+    )
+    .fetch_all(inner)
+    .await
+    .unwrap();
     assert_eq!(versions.len(), 1);
     assert_eq!(versions[0].0, 20_260_101_000_001);
 }

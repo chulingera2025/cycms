@@ -138,7 +138,9 @@ impl UserRepository {
                     .fetch_optional(pool)
                     .await
                     .map_err(AuthError::Database)?;
-                row.map(|r| pg_row_to_user(&r)).transpose().map_err(Into::into)
+                row.map(|r| pg_row_to_user(&r))
+                    .transpose()
+                    .map_err(Into::into)
             }
             DatabasePool::MySql(pool) => {
                 let row = sqlx::query(MYSQL_SELECT_WHERE_USERNAME)
@@ -146,7 +148,9 @@ impl UserRepository {
                     .fetch_optional(pool)
                     .await
                     .map_err(AuthError::Database)?;
-                row.map(|r| mysql_row_to_user(&r)).transpose().map_err(Into::into)
+                row.map(|r| mysql_row_to_user(&r))
+                    .transpose()
+                    .map_err(Into::into)
             }
             DatabasePool::Sqlite(pool) => {
                 let row = sqlx::query(SQLITE_SELECT_WHERE_USERNAME)
@@ -154,7 +158,9 @@ impl UserRepository {
                     .fetch_optional(pool)
                     .await
                     .map_err(AuthError::Database)?;
-                row.map(|r| sqlite_row_to_user(&r)).transpose().map_err(Into::into)
+                row.map(|r| sqlite_row_to_user(&r))
+                    .transpose()
+                    .map_err(Into::into)
             }
         }
     }
@@ -171,7 +177,9 @@ impl UserRepository {
                     .fetch_optional(pool)
                     .await
                     .map_err(AuthError::Database)?;
-                row.map(|r| pg_row_to_user(&r)).transpose().map_err(Into::into)
+                row.map(|r| pg_row_to_user(&r))
+                    .transpose()
+                    .map_err(Into::into)
             }
             DatabasePool::MySql(pool) => {
                 let row = sqlx::query(MYSQL_SELECT_WHERE_ID)
@@ -179,7 +187,9 @@ impl UserRepository {
                     .fetch_optional(pool)
                     .await
                     .map_err(AuthError::Database)?;
-                row.map(|r| mysql_row_to_user(&r)).transpose().map_err(Into::into)
+                row.map(|r| mysql_row_to_user(&r))
+                    .transpose()
+                    .map_err(Into::into)
             }
             DatabasePool::Sqlite(pool) => {
                 let row = sqlx::query(SQLITE_SELECT_WHERE_ID)
@@ -187,7 +197,9 @@ impl UserRepository {
                     .fetch_optional(pool)
                     .await
                     .map_err(AuthError::Database)?;
-                row.map(|r| sqlite_row_to_user(&r)).transpose().map_err(Into::into)
+                row.map(|r| sqlite_row_to_user(&r))
+                    .transpose()
+                    .map_err(Into::into)
             }
         }
     }
@@ -232,25 +244,19 @@ impl UserRepository {
     }
 }
 
-const PG_SELECT_WHERE_USERNAME: &str =
-    "SELECT id::TEXT AS id, username, email, password_hash, is_active, created_at, updated_at \
+const PG_SELECT_WHERE_USERNAME: &str = "SELECT id::TEXT AS id, username, email, password_hash, is_active, created_at, updated_at \
      FROM users WHERE username = $1";
-const PG_SELECT_WHERE_ID: &str =
-    "SELECT id::TEXT AS id, username, email, password_hash, is_active, created_at, updated_at \
+const PG_SELECT_WHERE_ID: &str = "SELECT id::TEXT AS id, username, email, password_hash, is_active, created_at, updated_at \
      FROM users WHERE id = $1::UUID";
 
-const MYSQL_SELECT_WHERE_USERNAME: &str =
-    "SELECT id, username, email, password_hash, is_active, created_at, updated_at \
+const MYSQL_SELECT_WHERE_USERNAME: &str = "SELECT id, username, email, password_hash, is_active, created_at, updated_at \
      FROM users WHERE username = ?";
-const MYSQL_SELECT_WHERE_ID: &str =
-    "SELECT id, username, email, password_hash, is_active, created_at, updated_at \
+const MYSQL_SELECT_WHERE_ID: &str = "SELECT id, username, email, password_hash, is_active, created_at, updated_at \
      FROM users WHERE id = ?";
 
-const SQLITE_SELECT_WHERE_USERNAME: &str =
-    "SELECT id, username, email, password_hash, is_active, created_at, updated_at \
+const SQLITE_SELECT_WHERE_USERNAME: &str = "SELECT id, username, email, password_hash, is_active, created_at, updated_at \
      FROM users WHERE username = ?";
-const SQLITE_SELECT_WHERE_ID: &str =
-    "SELECT id, username, email, password_hash, is_active, created_at, updated_at \
+const SQLITE_SELECT_WHERE_ID: &str = "SELECT id, username, email, password_hash, is_active, created_at, updated_at \
      FROM users WHERE id = ?";
 
 fn pg_row_to_user(row: &PgRow) -> std::result::Result<User, AuthError> {

@@ -10,8 +10,7 @@ use cycms_migrate::MigrationEngine;
 const TEST_SECRET: &str = "test-jwt-secret";
 
 fn system_migrations_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../cycms-migrate/migrations/system")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cycms-migrate/migrations/system")
 }
 
 async fn fresh_sqlite_pool() -> Arc<DatabasePool> {

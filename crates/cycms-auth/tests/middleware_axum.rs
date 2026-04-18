@@ -20,8 +20,7 @@ use tower::ServiceExt;
 const TEST_SECRET: &str = "test-jwt-secret";
 
 fn system_migrations_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../cycms-migrate/migrations/system")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cycms-migrate/migrations/system")
 }
 
 async fn fresh_sqlite_pool() -> Arc<DatabasePool> {
@@ -56,7 +55,12 @@ fn auth_config() -> AuthConfig {
     }
 }
 
-async fn seed_user(repo: &UserRepository, username: &str, password: &str, cfg: &Argon2Config) -> String {
+async fn seed_user(
+    repo: &UserRepository,
+    username: &str,
+    password: &str,
+    cfg: &Argon2Config,
+) -> String {
     let phc = hash_password(password, cfg).unwrap();
     repo.create(NewUserRow {
         username: username.to_owned(),

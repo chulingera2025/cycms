@@ -49,11 +49,7 @@ impl JwtCodec {
     ///
     /// # Errors
     /// 签名失败返回 [`AuthError::Jwt`]。
-    pub fn issue_pair(
-        &self,
-        user_id: &str,
-        roles: Vec<String>,
-    ) -> Result<IssuedTokens, AuthError> {
+    pub fn issue_pair(&self, user_id: &str, roles: Vec<String>) -> Result<IssuedTokens, AuthError> {
         let now = Utc::now();
         let now_ts = now.timestamp();
         let access_exp_ts = now_ts.saturating_add(self.access_ttl_secs);
@@ -81,8 +77,7 @@ impl JwtCodec {
         let access_token = encode(&header, &access_claims, &self.encoding)?;
         let refresh_token = encode(&header, &refresh_claims, &self.encoding)?;
 
-        let refresh_expires_at =
-            DateTime::<Utc>::from_timestamp(refresh_exp_ts, 0).unwrap_or(now);
+        let refresh_expires_at = DateTime::<Utc>::from_timestamp(refresh_exp_ts, 0).unwrap_or(now);
         Ok(IssuedTokens {
             pair: TokenPair {
                 access_token,
@@ -134,7 +129,9 @@ mod tests {
             .unwrap();
         assert_eq!(issued.pair.expires_in, 900);
 
-        let claims = codec.decode(&issued.pair.access_token, TokenType::Access).unwrap();
+        let claims = codec
+            .decode(&issued.pair.access_token, TokenType::Access)
+            .unwrap();
         assert_eq!(claims.sub, "user-1");
         assert_eq!(claims.token_type, TokenType::Access);
         assert_eq!(claims.roles, vec!["admin".to_owned(), "editor".to_owned()]);
@@ -144,7 +141,9 @@ mod tests {
     fn issue_then_decode_refresh_round_trip() {
         let codec = codec();
         let issued = codec.issue_pair("user-1", vec![]).unwrap();
-        let claims = codec.decode(&issued.pair.refresh_token, TokenType::Refresh).unwrap();
+        let claims = codec
+            .decode(&issued.pair.refresh_token, TokenType::Refresh)
+            .unwrap();
         assert_eq!(claims.jti, issued.refresh_jti);
         assert_eq!(claims.token_type, TokenType::Refresh);
     }

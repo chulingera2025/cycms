@@ -13,8 +13,7 @@ use cycms_migrate::MigrationEngine;
 const TEST_SECRET: &str = "test-jwt-secret";
 
 fn system_migrations_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../cycms-migrate/migrations/system")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cycms-migrate/migrations/system")
 }
 
 async fn fresh_sqlite_pool() -> Arc<DatabasePool> {
@@ -186,7 +185,11 @@ async fn verify_access_rejects_revoked_token() {
     // 将其 jti 加入黑名单，再次校验应失败
     engine
         .revoked_tokens()
-        .revoke(&claims.jti, chrono::Utc::now() + chrono::Duration::hours(1), "test")
+        .revoke(
+            &claims.jti,
+            chrono::Utc::now() + chrono::Duration::hours(1),
+            "test",
+        )
         .await
         .unwrap();
     let err = engine.verify_access(&pair.access_token).await.unwrap_err();

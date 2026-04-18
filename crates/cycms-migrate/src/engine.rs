@@ -59,7 +59,8 @@ impl MigrationEngine {
         &self,
         migrations_root: &Path,
     ) -> Result<Vec<MigrationRecord>> {
-        self.run_migrations_for(SYSTEM_SOURCE, migrations_root).await
+        self.run_migrations_for(SYSTEM_SOURCE, migrations_root)
+            .await
     }
 
     /// 执行指定插件的迁移。
@@ -99,11 +100,10 @@ impl MigrationEngine {
         let by_version: std::collections::HashMap<i64, &DiscoveredMigration> =
             discovered.iter().map(|m| (m.version, m)).collect();
 
-        let limit =
-            i64::try_from(count).map_err(|_| Error::BadRequest {
-                message: "rollback count exceeds i64 range".to_owned(),
-                source: None,
-            })?;
+        let limit = i64::try_from(count).map_err(|_| Error::BadRequest {
+            message: "rollback count exceeds i64 range".to_owned(),
+            source: None,
+        })?;
         let targets = runner::list_recent_applied(&self.db, source, limit).await?;
         if targets.is_empty() {
             return Ok(Vec::new());

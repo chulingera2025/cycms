@@ -92,7 +92,6 @@ pub struct PluginsConfig {
     pub wasm_enabled: bool,
 }
 
-
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {

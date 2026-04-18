@@ -12,8 +12,7 @@ use cycms_migrate::MigrationEngine;
 const TEST_SECRET: &str = "test-jwt-secret";
 
 fn system_migrations_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../cycms-migrate/migrations/system")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cycms-migrate/migrations/system")
 }
 
 async fn fresh_sqlite_pool() -> Arc<DatabasePool> {
@@ -161,7 +160,9 @@ async fn refresh_uses_latest_roles() {
     let pair_v1 = login_fresh(&engine, "eva", "StrongPass1!").await;
     // 初始 roles = []
     let codec = JwtCodec::new(TEST_SECRET, 900, 1_209_600);
-    let claims_v1 = codec.decode(&pair_v1.access_token, TokenType::Access).unwrap();
+    let claims_v1 = codec
+        .decode(&pair_v1.access_token, TokenType::Access)
+        .unwrap();
     assert!(claims_v1.roles.is_empty());
 
     // 之后授予 editor 角色
@@ -183,6 +184,8 @@ async fn refresh_uses_latest_roles() {
 
     // refresh 后新 token 中 roles 应被刷新
     let pair_v2 = engine.refresh(&pair_v1.refresh_token).await.unwrap();
-    let claims_v2 = codec.decode(&pair_v2.access_token, TokenType::Access).unwrap();
+    let claims_v2 = codec
+        .decode(&pair_v2.access_token, TokenType::Access)
+        .unwrap();
     assert_eq!(claims_v2.roles, vec!["editor".to_owned()]);
 }

@@ -46,9 +46,7 @@ pub(crate) async fn apply_one(
 ) -> Result<MigrationRecord> {
     let started = Instant::now();
     match db {
-        DatabasePool::Postgres(pool) => {
-            apply_postgres(pool, source, migration, started).await
-        }
+        DatabasePool::Postgres(pool) => apply_postgres(pool, source, migration, started).await,
         DatabasePool::MySql(pool) => apply_mysql(pool, source, migration, started).await,
         DatabasePool::Sqlite(pool) => apply_sqlite(pool, source, migration, started).await,
     }
@@ -95,11 +93,7 @@ pub(crate) async fn list_recent_applied(
 }
 
 /// 在事务内执行 down SQL 并把对应行标记为 `rolled_back`。
-pub(crate) async fn rollback_one(
-    db: &DatabasePool,
-    record_id: i64,
-    down_sql: &str,
-) -> Result<()> {
+pub(crate) async fn rollback_one(db: &DatabasePool, record_id: i64, down_sql: &str) -> Result<()> {
     match db {
         DatabasePool::Postgres(pool) => {
             let mut tx = pool
@@ -110,14 +104,12 @@ pub(crate) async fn rollback_one(
                 .execute(&mut *tx)
                 .await
                 .map_err(map_db_error("failed to execute down migration"))?;
-            sqlx::query(
-                "UPDATE migration_records SET status = $1 WHERE id = $2",
-            )
-            .bind(MigrationStatus::RolledBack.as_str())
-            .bind(record_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(map_db_error("failed to mark record as rolled_back"))?;
+            sqlx::query("UPDATE migration_records SET status = $1 WHERE id = $2")
+                .bind(MigrationStatus::RolledBack.as_str())
+                .bind(record_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(map_db_error("failed to mark record as rolled_back"))?;
             tx.commit()
                 .await
                 .map_err(map_db_error("failed to commit rollback"))?;
@@ -329,9 +321,7 @@ fn elapsed_millis_i64(started: Instant) -> i64 {
     i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX)
 }
 
-fn map_db_error(
-    message: &'static str,
-) -> impl FnOnce(sqlx::Error) -> Error + 'static {
+fn map_db_error(message: &'static str) -> impl FnOnce(sqlx::Error) -> Error + 'static {
     move |source| Error::Internal {
         message: message.to_owned(),
         source: Some(Box::new(source)),

@@ -33,7 +33,11 @@ fn write_migration(
 
 #[tokio::test]
 async fn plugin_migrations_are_tracked_independently_from_system() {
-    let pool = Arc::new(DatabasePool::connect(&sqlite_memory_config()).await.unwrap());
+    let pool = Arc::new(
+        DatabasePool::connect(&sqlite_memory_config())
+            .await
+            .unwrap(),
+    );
     let engine = MigrationEngine::new(Arc::clone(&pool));
 
     let system_root = tempdir().unwrap();
@@ -81,7 +85,11 @@ async fn plugin_migrations_are_tracked_independently_from_system() {
 
 #[tokio::test]
 async fn rollback_reverses_latest_n_migrations() {
-    let pool = Arc::new(DatabasePool::connect(&sqlite_memory_config()).await.unwrap());
+    let pool = Arc::new(
+        DatabasePool::connect(&sqlite_memory_config())
+            .await
+            .unwrap(),
+    );
     let engine = MigrationEngine::new(Arc::clone(&pool));
 
     let root = tempdir().unwrap();
@@ -102,10 +110,7 @@ async fn rollback_reverses_latest_n_migrations() {
 
     engine.run_system_migrations(root.path()).await.unwrap();
 
-    let rolled = engine
-        .rollback("system", root.path(), 1)
-        .await
-        .unwrap();
+    let rolled = engine.rollback("system", root.path(), 1).await.unwrap();
     assert_eq!(rolled.len(), 1);
     assert_eq!(rolled[0].version, 20_260_101_000_002);
 
@@ -128,12 +133,19 @@ async fn rollback_reverses_latest_n_migrations() {
     .await
     .unwrap();
     let statuses: Vec<String> = statuses.into_iter().map(|t| t.0).collect();
-    assert_eq!(statuses, vec!["applied".to_owned(), "rolled_back".to_owned()]);
+    assert_eq!(
+        statuses,
+        vec!["applied".to_owned(), "rolled_back".to_owned()]
+    );
 }
 
 #[tokio::test]
 async fn rollback_refuses_when_down_sql_missing() {
-    let pool = Arc::new(DatabasePool::connect(&sqlite_memory_config()).await.unwrap());
+    let pool = Arc::new(
+        DatabasePool::connect(&sqlite_memory_config())
+            .await
+            .unwrap(),
+    );
     let engine = MigrationEngine::new(Arc::clone(&pool));
 
     let root = tempdir().unwrap();

@@ -49,12 +49,7 @@ impl RevokedTokenRepository {
     ///
     /// # Errors
     /// 插入失败时返回 [`cycms_core::Error::Internal`]。
-    pub async fn revoke(
-        &self,
-        jti: &str,
-        expires_at: DateTime<Utc>,
-        reason: &str,
-    ) -> Result<()> {
+    pub async fn revoke(&self, jti: &str, expires_at: DateTime<Utc>, reason: &str) -> Result<()> {
         match self.db.as_ref() {
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
