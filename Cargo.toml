@@ -58,6 +58,10 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres",
 axum = "0.8"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "cors"] }
+argon2 = "0.5"
+password-hash = { version = "0.5", features = ["alloc"] }
+jsonwebtoken = "9"
+rand = "0.8"
 
 cycms-core = { path = "crates/cycms-core" }
 cycms-kernel = { path = "crates/cycms-kernel" }

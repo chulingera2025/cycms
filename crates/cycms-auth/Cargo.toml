@@ -5,5 +5,30 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[dependencies]
+cycms-core = { workspace = true }
+cycms-config = { workspace = true }
+cycms-db = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+argon2 = { workspace = true }
+password-hash = { workspace = true }
+jsonwebtoken = { workspace = true }
+rand = { workspace = true }
+axum = { workspace = true }
+
+[dev-dependencies]
+cycms-migrate = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tempfile = "3"
+tower = { workspace = true }
+http-body-util = "0.1"
+
 [lints]
 workspace = true
