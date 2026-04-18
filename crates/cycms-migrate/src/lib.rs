@@ -12,5 +12,6 @@ mod engine;
 mod record;
 mod runner;
 
+pub use discovery::{DiscoveredMigration, scan};
 pub use engine::MigrationEngine;
 pub use record::{MigrationRecord, MigrationStatus, SYSTEM_SOURCE};
