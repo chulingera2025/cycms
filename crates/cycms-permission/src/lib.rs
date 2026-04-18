@@ -5,6 +5,7 @@
 //! 子系统在后续子任务（6.1–6.8）中逐步填充。
 
 mod error;
+mod middleware;
 mod model;
 mod parser;
 mod permission;
@@ -13,6 +14,7 @@ mod seed;
 mod service;
 
 pub use error::PermissionError;
+pub use middleware::{PermissionMiddlewareState, require_permission_middleware};
 pub use model::{NewRoleRow, Permission, PermissionDefinition, PermissionScope, Role};
 pub use parser::{ParsedCode, parse_permission_code};
 pub use permission::PermissionRepository;
