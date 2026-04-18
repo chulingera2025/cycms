@@ -6,11 +6,15 @@
 mod claims;
 mod error;
 mod password;
+mod revoked;
+mod service;
 mod token;
 mod user;
 
 pub use claims::{AuthClaims, TokenType};
 pub use error::AuthError;
 pub use password::{PasswordPolicy, hash_password, verify_password};
+pub use revoked::RevokedTokenRepository;
+pub use service::{AuthEngine, LoginRequest};
 pub use token::{IssuedTokens, JwtCodec, TokenPair};
 pub use user::{NewUserRow, User, UserRepository};
