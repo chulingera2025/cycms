@@ -4,7 +4,9 @@
 //! 子系统在后续子任务中逐步填充。
 
 mod error;
+mod password;
 mod user;
 
 pub use error::AuthError;
+pub use password::{PasswordPolicy, hash_password, verify_password};
 pub use user::{NewUserRow, User, UserRepository};
