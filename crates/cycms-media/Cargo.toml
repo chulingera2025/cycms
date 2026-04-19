@@ -5,5 +5,25 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[dependencies]
+cycms-core = { workspace = true }
+cycms-db = { workspace = true }
+cycms-events = { workspace = true }
+cycms-config = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+async-trait = { workspace = true }
+infer = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+cycms-migrate = { workspace = true }
+tempfile = { workspace = true }
+
 [lints]
 workspace = true

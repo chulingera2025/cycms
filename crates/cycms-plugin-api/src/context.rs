@@ -5,6 +5,7 @@ use cycms_content_engine::ContentEngine;
 use cycms_content_model::ContentModelRegistry;
 use cycms_db::DatabasePool;
 use cycms_events::EventBus;
+use cycms_media::MediaManager;
 use cycms_permission::PermissionEngine;
 use cycms_publish::PublishManager;
 use cycms_revision::RevisionManager;
@@ -41,6 +42,8 @@ pub struct PluginContext {
     pub revision_manager: Arc<RevisionManager>,
     /// 发布状态机门面（任务 13）。
     pub publish_manager: Arc<PublishManager>,
+    /// 媒体资产管理门面（任务 14）。
+    pub media_manager: Arc<MediaManager>,
     /// 插件间服务发现与调用。
     pub service_registry: Arc<ServiceRegistry>,
 }
@@ -59,6 +62,7 @@ impl PluginContext {
         content_engine: Arc<ContentEngine>,
         revision_manager: Arc<RevisionManager>,
         publish_manager: Arc<PublishManager>,
+        media_manager: Arc<MediaManager>,
         service_registry: Arc<ServiceRegistry>,
     ) -> Self {
         Self {
@@ -71,6 +75,7 @@ impl PluginContext {
             content_engine,
             revision_manager,
             publish_manager,
+            media_manager,
             service_registry,
         }
     }

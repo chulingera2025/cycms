@@ -63,6 +63,8 @@ password-hash = { version = "0.5", features = ["alloc"] }
 jsonwebtoken = "9"
 rand = "0.8"
 async-trait = "0.1"
+infer = "0.19"
+tempfile = "3"
 
 cycms-core = { path = "crates/cycms-core" }
 cycms-kernel = { path = "crates/cycms-kernel" }

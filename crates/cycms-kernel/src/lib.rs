@@ -8,6 +8,7 @@ use cycms_content_model::{ContentModelRegistry, FieldTypeRegistry, seed_default_
 use cycms_core::Result;
 use cycms_db::DatabasePool;
 use cycms_events::EventBus;
+use cycms_media::MediaManager;
 use cycms_migrate::MigrationEngine;
 use cycms_permission::PermissionEngine;
 use cycms_plugin_api::ServiceRegistry;
@@ -42,6 +43,8 @@ pub struct AppContext {
     pub revision_manager: Arc<RevisionManager>,
     /// 任务 13：发布状态机门面（Draft → Published / Published → Draft）。
     pub publish_manager: Arc<PublishManager>,
+    /// 任务 14：媒体资产管理门面（上传/查询/删除）。
+    pub media_manager: Arc<MediaManager>,
     /// 占位：任务 15 替换为 `Arc<PluginManager>`
     pub plugin_manager: Arc<PlaceholderService>,
 }
@@ -104,8 +107,12 @@ impl Kernel {
         }
         let service_registry = Arc::new(ServiceRegistry::new());
         let revision_manager = Arc::new(RevisionManager::new(Arc::clone(&db)));
-        let publish_manager =
-            Arc::new(PublishManager::new(&db, Arc::clone(&event_bus)));
+        let publish_manager = Arc::new(PublishManager::new(&db, Arc::clone(&event_bus)));
+        let media_manager = Arc::new(MediaManager::new(
+            &db,
+            Arc::clone(&event_bus),
+            &self.config.media,
+        ));
         let content_engine = Arc::new(ContentEngine::new(
             Arc::clone(&db),
             Arc::clone(&content_model),
@@ -124,6 +131,7 @@ impl Kernel {
             &content_engine,
             &revision_manager,
             &publish_manager,
+            &media_manager,
         )?;
 
         Ok(AppContext {
@@ -138,6 +146,7 @@ impl Kernel {
             content_engine,
             revision_manager,
             publish_manager,
+            media_manager,
             plugin_manager: Arc::new(PlaceholderService),
         })
     }
@@ -179,6 +188,7 @@ fn register_core_services(
     content_engine: &Arc<ContentEngine>,
     revision_manager: &Arc<RevisionManager>,
     publish_manager: &Arc<PublishManager>,
+    media_manager: &Arc<MediaManager>,
 ) -> Result<()> {
     registry.register("system.db", Arc::clone(db))?;
     registry.register("system.auth", Arc::clone(auth_engine))?;
@@ -187,6 +197,7 @@ fn register_core_services(
     registry.register("system.settings", Arc::clone(settings_manager))?;
     registry.register("system.content_model", Arc::clone(content_model))?;
     registry.register("system.content_engine", Arc::clone(content_engine))?;
+    registry.register("system.media", Arc::clone(media_manager))?;
     registry.register("system.revision", Arc::clone(revision_manager))?;
     registry.register("system.publish", Arc::clone(publish_manager))?;
     Ok(())

@@ -101,6 +101,8 @@ pub struct MediaConfig {
     pub upload_dir: String,
     pub max_file_size: u64,
     pub allowed_mime_types: Vec<String>,
+    /// 删除有引用的媒体资产时的行为：`"block"` 返回错误，`"warn"` 仅记录警告并继续删除。
+    pub on_referenced_delete: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -196,6 +198,7 @@ impl Default for MediaConfig {
                 "application/pdf".to_owned(),
                 "video/mp4".to_owned(),
             ],
+            on_referenced_delete: "block".to_owned(),
         }
     }
 }
