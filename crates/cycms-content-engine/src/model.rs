@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -50,6 +52,10 @@ impl std::str::FromStr for ContentStatus {
 ///
 /// `content_type_api_id` 不落盘到 `content_entries`，由 service 层在读取后
 /// 从关联的 `content_types.api_id` 反查补齐，便于上层路由与事件 payload 使用。
+///
+/// `populated` 仅在调用方传入 `populate` 列表后才被填充，按 `field_api_id` 分组
+/// 给出对应 Relation 字段的目标 entries。v0.1 仅支持单层加载（嵌套 entries
+/// 自身的 `populated` 不会再展开）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContentEntry {
     pub id: String,
@@ -65,6 +71,8 @@ pub struct ContentEntry {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub published_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub populated: Option<HashMap<String, Vec<ContentEntry>>>,
 }
 
 /// 创建内容实例的入参。
@@ -173,6 +181,7 @@ mod tests {
             created_at,
             updated_at,
             published_at: None,
+            populated: None,
         };
         let v = serde_json::to_value(&entry).unwrap();
         assert_eq!(v["status"], "draft");

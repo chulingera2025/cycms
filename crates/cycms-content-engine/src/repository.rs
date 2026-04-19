@@ -638,6 +638,7 @@ fn pg_row_to_entry(row: &PgRow) -> std::result::Result<ContentEntry, ContentEngi
         published_at: row
             .try_get("published_at")
             .map_err(ContentEngineError::Database)?,
+        populated: None,
     })
 }
 
@@ -682,6 +683,7 @@ fn mysql_row_to_entry(row: &MySqlRow) -> std::result::Result<ContentEntry, Conte
         created_at: created_at.and_utc(),
         updated_at: updated_at.and_utc(),
         published_at: published_at.map(|d| d.and_utc()),
+        populated: None,
     })
 }
 
@@ -723,5 +725,6 @@ fn sqlite_row_to_entry(row: &SqliteRow) -> std::result::Result<ContentEntry, Con
         published_at: row
             .try_get("published_at")
             .map_err(ContentEngineError::Database)?,
+        populated: None,
     })
 }

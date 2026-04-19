@@ -13,11 +13,12 @@
 //! - [`model`]：`ContentEntry` / `ContentStatus` / 分页响应等数据结构；
 //! - [`repository`]：`content_entries` 表的三方言 CRUD；
 //! - [`query`]：`ContentQuery` + 13 种 filter operator 的 SQL 编译；
-//! - TODO!!!: Step 5 加入 `populate`（单层关联加载）；
+//! - [`populate`]：`content_relations` 单层关联加载；
 //! - TODO!!!: Step 6/7 加入 `service`（`ContentEngine` 门面 + `EventBus` 集成）。
 
 mod error;
 mod model;
+mod populate;
 mod query;
 mod repository;
 
@@ -26,6 +27,7 @@ pub use model::{
     ContentEntry, ContentStatus, CreateEntryInput, PaginatedResponse, PaginationMeta,
     UpdateEntryInput,
 };
+pub use populate::{SINGLE_LEVEL_DEPTH, check_depth, populate_entries};
 pub use query::{
     ColumnField, ContentQuery, FieldRef, FilterOperator, FilterSpec, ListQueryPlan, QueryParam,
     SortDir, SortSpec, compile_list_query,
