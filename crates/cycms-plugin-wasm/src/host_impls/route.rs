@@ -1,16 +1,32 @@
-//! `route` host 组 —— 17.3 将记录到 `HostState.pending_routes`，供 17.4 合成 Router。
+//! `route` host 组：把 guest 声明的 (path, method) 暂存到 `HostState.pending_routes`，
+//! 17.4 的 `load` 会读取并合成 axum Router，命中时回调 guest 的 `handle-http`。
 
 use crate::bindings::cycms::plugin::route::Host;
 use crate::host::HostState;
 
-const NOT_IMPL: &str = "route host: not yet implemented (task 17.3)";
-
 impl Host for HostState {
     async fn register(
         &mut self,
-        _path: String,
-        _method: String,
+        path: String,
+        method: String,
     ) -> wasmtime::Result<Result<(), String>> {
-        Ok(Err(NOT_IMPL.into()))
+        if path.trim().is_empty() {
+            return Ok(Err("route.register: path must not be empty".into()));
+        }
+        let upper_method = method.to_ascii_uppercase();
+        if !matches!(
+            upper_method.as_str(),
+            "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
+        ) {
+            return Ok(Err(format!("route.register: unsupported method {method}")));
+        }
+        if !self
+            .pending_routes
+            .iter()
+            .any(|(p, m)| p == &path && m == &upper_method)
+        {
+            self.pending_routes.push((path, upper_method));
+        }
+        Ok(Ok(()))
     }
 }

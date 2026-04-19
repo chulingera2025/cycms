@@ -19,8 +19,7 @@ use cycms_settings::SettingsManager;
 
 /// 每个 Wasm 插件实例对应一份 `HostState`，随 [`wasmtime::Store`] 生命周期一起存亡。
 ///
-/// 字段在 17.2 搭骨架时未被 host 实现读取（目前仅 `log` 真正工作，其余 9 组为 stub）；
-/// 17.3 起会被各组 host function 逐一使用，此处临时 `#[allow(dead_code)]`。
+/// 字段在 17.2 搭骨架时仅部分被 host 实现读取；17.3 起各组 host function 逐一使用。
 #[allow(dead_code)]
 pub(crate) struct HostState {
     /// 当前插件的 manifest name，用作 `settings` namespace / `tracing` 字段。
@@ -32,6 +31,12 @@ pub(crate) struct HostState {
     pub permissions: Arc<PermissionEngine>,
     pub service_registry: Arc<ServiceRegistry>,
     pub settings: Arc<SettingsManager>,
+    /// guest 在 `on-enable` 期间通过 `event.subscribe` 声明的事件类型；17.4 的
+    /// `load` 在生命周期钩子返回后读取此列表，把 `on-event` 代理订阅挂到 `EventBus`。
+    pub subscribed_event_kinds: Vec<String>,
+    /// guest 在 `on-enable` 期间通过 `route.register` 声明的路由；17.4 的 `load`
+    /// 在生命周期钩子返回后读取此列表，合成 axum Router 并回调 `handle-http`。
+    pub pending_routes: Vec<(String, String)>,
     /// WASI preview 2 上下文：`WasiCtxBuilder::inherit_network/stdio + preopened_dir
     /// ("/")` 构造，完整透传给 guest。
     pub wasi: WasiCtx,
