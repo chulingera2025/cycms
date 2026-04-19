@@ -4,7 +4,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axum::Router;
 use cycms_core::Result;
-use cycms_events::EventHandler;
+use cycms_events::{EventHandler, EventKind};
 
 use crate::context::PluginContext;
 
@@ -39,8 +39,12 @@ pub trait Plugin: Send + Sync {
         None
     }
 
-    /// 插件提供的事件处理器清单，`NativePluginRuntime` 会转交给 `EventBus`。
-    fn event_handlers(&self) -> Vec<Arc<dyn EventHandler>> {
+    /// 插件提供的事件处理器清单，以 `(EventKind, handler)` 对给出。
+    ///
+    /// `NativePluginRuntime` 在 `on_enable` 之后逐项调用 [`cycms_events::EventBus::subscribe`],
+    /// 把返回的 `SubscriptionHandle` 与插件绑定；禁用时统一 `abort`。同一 handler 想订阅
+    /// 多个 `EventKind` 时需要在返回列表中重复出现。
+    fn event_handlers(&self) -> Vec<(EventKind, Arc<dyn EventHandler>)> {
         Vec::new()
     }
 

@@ -40,9 +40,25 @@ impl ServiceRegistry {
     where
         T: Send + Sync + 'static,
     {
+        let erased: Arc<dyn Any + Send + Sync> = service;
+        self.register_erased(key, erased)
+    }
+
+    /// `register` 的类型已擦除版本：直接接收 `Arc<dyn Any + Send + Sync>`。
+    ///
+    /// 为 `NativePluginRuntime` / `WasmPluginRuntime` 批量注册 [`crate::Plugin::services`]
+    /// 时使用。插件侧已把服务实例装进 `Arc<dyn Any + Send + Sync>`，此处直接透传即可，
+    /// 无需二次类型还原。
+    ///
+    /// # Errors
+    /// key 不符合两段式格式时返回 [`RegistryError::InvalidKey`]。
+    pub fn register_erased(
+        &self,
+        key: &str,
+        service: Arc<dyn Any + Send + Sync>,
+    ) -> Result<(), RegistryError> {
         validate_full_key(key)?;
 
-        let erased: Arc<dyn Any + Send + Sync> = service;
         let mut services = self
             .services
             .write()
@@ -50,7 +66,7 @@ impl ServiceRegistry {
         if services.contains_key(key) {
             warn!(service_key = %key, "service re-registered, previous instance replaced");
         }
-        services.insert(key.to_owned(), erased);
+        services.insert(key.to_owned(), service);
         drop(services);
 
         let mut availability = self
