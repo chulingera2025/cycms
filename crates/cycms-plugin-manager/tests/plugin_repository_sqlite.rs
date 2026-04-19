@@ -4,9 +4,7 @@ use std::sync::Arc;
 use cycms_config::{DatabaseConfig, DatabaseDriver};
 use cycms_db::DatabasePool;
 use cycms_migrate::MigrationEngine;
-use cycms_plugin_manager::{
-    NewPluginRow, PluginKind, PluginRepository, PluginStatus,
-};
+use cycms_plugin_manager::{NewPluginRow, PluginKind, PluginRepository, PluginStatus};
 use serde_json::json;
 
 fn system_migrations_root() -> PathBuf {

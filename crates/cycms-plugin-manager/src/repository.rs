@@ -232,36 +232,28 @@ impl PluginRepository {
 
 const PG_INSERT: &str = "INSERT INTO plugins (id, name, version, kind, status, manifest) \
      VALUES ($1::UUID, $2, $3, $4, $5, $6)";
-const PG_SELECT_BY_NAME: &str =
-    "SELECT id::TEXT AS id, name, version, kind, status, manifest, installed_at, updated_at \
+const PG_SELECT_BY_NAME: &str = "SELECT id::TEXT AS id, name, version, kind, status, manifest, installed_at, updated_at \
      FROM plugins WHERE name = $1";
-const PG_SELECT_ALL: &str =
-    "SELECT id::TEXT AS id, name, version, kind, status, manifest, installed_at, updated_at \
+const PG_SELECT_ALL: &str = "SELECT id::TEXT AS id, name, version, kind, status, manifest, installed_at, updated_at \
      FROM plugins ORDER BY name";
-const PG_UPDATE_STATUS: &str =
-    "UPDATE plugins SET status = $1, updated_at = now() WHERE name = $2";
+const PG_UPDATE_STATUS: &str = "UPDATE plugins SET status = $1, updated_at = now() WHERE name = $2";
 
 const MYSQL_INSERT: &str = "INSERT INTO plugins (id, name, version, kind, status, manifest) \
      VALUES (?, ?, ?, ?, ?, ?)";
-const MYSQL_SELECT_BY_NAME: &str =
-    "SELECT id, name, version, kind, status, manifest, installed_at, updated_at \
+const MYSQL_SELECT_BY_NAME: &str = "SELECT id, name, version, kind, status, manifest, installed_at, updated_at \
      FROM plugins WHERE name = ?";
-const MYSQL_SELECT_ALL: &str =
-    "SELECT id, name, version, kind, status, manifest, installed_at, updated_at \
+const MYSQL_SELECT_ALL: &str = "SELECT id, name, version, kind, status, manifest, installed_at, updated_at \
      FROM plugins ORDER BY name";
 const MYSQL_UPDATE_STATUS: &str =
     "UPDATE plugins SET status = ?, updated_at = CURRENT_TIMESTAMP(6) WHERE name = ?";
 
 const SQLITE_INSERT: &str = "INSERT INTO plugins (id, name, version, kind, status, manifest) \
      VALUES (?, ?, ?, ?, ?, ?)";
-const SQLITE_SELECT_BY_NAME: &str =
-    "SELECT id, name, version, kind, status, manifest, installed_at, updated_at \
+const SQLITE_SELECT_BY_NAME: &str = "SELECT id, name, version, kind, status, manifest, installed_at, updated_at \
      FROM plugins WHERE name = ?";
-const SQLITE_SELECT_ALL: &str =
-    "SELECT id, name, version, kind, status, manifest, installed_at, updated_at \
+const SQLITE_SELECT_ALL: &str = "SELECT id, name, version, kind, status, manifest, installed_at, updated_at \
      FROM plugins ORDER BY name";
-const SQLITE_UPDATE_STATUS: &str =
-    "UPDATE plugins SET status = ?, \
+const SQLITE_UPDATE_STATUS: &str = "UPDATE plugins SET status = ?, \
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') \
      WHERE name = ?";
 
@@ -279,7 +271,9 @@ fn pg_row_to_record(row: &PgRow) -> std::result::Result<PluginRecord, PluginMana
         version: row
             .try_get("version")
             .map_err(PluginManagerError::Database)?,
-        kind: kind_str.parse::<PluginKind>().map_err(PluginManagerError::InvalidRecord)?,
+        kind: kind_str
+            .parse::<PluginKind>()
+            .map_err(PluginManagerError::InvalidRecord)?,
         status: status_str
             .parse::<PluginStatus>()
             .map_err(PluginManagerError::InvalidRecord)?,
@@ -313,7 +307,9 @@ fn mysql_row_to_record(row: &MySqlRow) -> std::result::Result<PluginRecord, Plug
         version: row
             .try_get("version")
             .map_err(PluginManagerError::Database)?,
-        kind: kind_str.parse::<PluginKind>().map_err(PluginManagerError::InvalidRecord)?,
+        kind: kind_str
+            .parse::<PluginKind>()
+            .map_err(PluginManagerError::InvalidRecord)?,
         status: status_str
             .parse::<PluginStatus>()
             .map_err(PluginManagerError::InvalidRecord)?,
@@ -337,7 +333,9 @@ fn sqlite_row_to_record(row: &SqliteRow) -> std::result::Result<PluginRecord, Pl
         version: row
             .try_get("version")
             .map_err(PluginManagerError::Database)?,
-        kind: kind_str.parse::<PluginKind>().map_err(PluginManagerError::InvalidRecord)?,
+        kind: kind_str
+            .parse::<PluginKind>()
+            .map_err(PluginManagerError::InvalidRecord)?,
         status: status_str
             .parse::<PluginStatus>()
             .map_err(PluginManagerError::InvalidRecord)?,

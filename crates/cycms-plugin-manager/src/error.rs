@@ -25,15 +25,10 @@ pub enum PluginManagerError {
 
     /// 非 optional 依赖缺失（Req 20.3 / 10.2）。
     #[error("plugin {plugin} depends on missing plugin {dependency}")]
-    MissingDependency {
-        plugin: String,
-        dependency: String,
-    },
+    MissingDependency { plugin: String, dependency: String },
 
     /// 依赖版本不匹配（Req 20.3 / 10.2）。
-    #[error(
-        "plugin {plugin} requires {dependency} {required}, but installed version is {actual}"
-    )]
+    #[error("plugin {plugin} requires {dependency} {required}, but installed version is {actual}")]
     IncompatibleDependency {
         plugin: String,
         dependency: String,

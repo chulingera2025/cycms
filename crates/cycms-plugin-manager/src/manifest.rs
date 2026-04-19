@@ -223,8 +223,7 @@ fn validate_plugin_name(name: &str) -> Result<(), PluginManagerError> {
     }
     if name.contains('.') {
         return Err(PluginManagerError::InvalidManifest(
-            "plugin.name must not contain '.' (collides with ServiceRegistry key separator)"
-                .into(),
+            "plugin.name must not contain '.' (collides with ServiceRegistry key separator)".into(),
         ));
     }
     if !name
@@ -277,7 +276,10 @@ cycms = ">=0.1.0"
         assert!(m.frontend.is_none());
         assert!(m.migrations.is_empty());
         assert_eq!(m.parsed_version().to_string(), "0.1.0");
-        assert!(m.parsed_compatibility().matches(&Version::parse("0.1.5").unwrap()));
+        assert!(
+            m.parsed_compatibility()
+                .matches(&Version::parse("0.1.5").unwrap())
+        );
     }
 
     #[test]

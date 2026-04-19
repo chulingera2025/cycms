@@ -56,8 +56,7 @@ pub struct PluginInfo {
 
 impl PluginInfo {
     fn from_record(record: &PluginRecord) -> Self {
-        let manifest: Option<PluginManifest> =
-            serde_json::from_value(record.manifest.clone()).ok();
+        let manifest: Option<PluginManifest> = serde_json::from_value(record.manifest.clone()).ok();
         let dependencies = manifest
             .as_ref()
             .map(|m| {
@@ -325,17 +324,11 @@ impl PluginManager {
     }
 
     fn runtime_for(&self, kind: PluginKind) -> Result<Arc<dyn PluginRuntime>> {
-        let guard = self
-            .runtimes
-            .read()
-            .unwrap_or_else(PoisonError::into_inner);
-        guard
-            .get(&kind)
-            .cloned()
-            .ok_or_else(|| Error::PluginError {
-                message: format!("no runtime registered for kind {kind}"),
-                source: None,
-            })
+        let guard = self.runtimes.read().unwrap_or_else(PoisonError::into_inner);
+        guard.get(&kind).cloned().ok_or_else(|| Error::PluginError {
+            message: format!("no runtime registered for kind {kind}"),
+            source: None,
+        })
     }
 
     fn manifest_from_record(record: &PluginRecord) -> Result<PluginManifest> {
@@ -395,15 +388,17 @@ impl PluginManager {
             if spec.optional {
                 continue;
             }
-            let dep_record = self.repository.find_by_name(dep_name).await?.ok_or_else(|| {
-                Error::ValidationError {
+            let dep_record = self
+                .repository
+                .find_by_name(dep_name)
+                .await?
+                .ok_or_else(|| Error::ValidationError {
                     message: format!(
                         "plugin {} depends on missing plugin {dep_name}",
                         manifest.plugin.name
                     ),
                     details: None,
-                }
-            })?;
+                })?;
             if dep_record.status != PluginStatus::Enabled {
                 return Err(Error::ValidationError {
                     message: format!(

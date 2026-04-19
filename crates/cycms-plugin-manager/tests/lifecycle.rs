@@ -13,9 +13,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use cycms_auth::AuthEngine;
-use cycms_config::{
-    AuthConfig, ContentConfig, DatabaseConfig, DatabaseDriver, MediaConfig,
-};
+use cycms_config::{AuthConfig, ContentConfig, DatabaseConfig, DatabaseDriver, MediaConfig};
 use cycms_content_engine::ContentEngine;
 use cycms_content_model::{ContentModelRegistry, FieldTypeRegistry};
 use cycms_core::Result;
@@ -66,7 +64,10 @@ impl PluginRuntime for MockRuntime {
         _entry: &Path,
         _ctx: Arc<PluginContext>,
     ) -> Result<()> {
-        self.loaded.lock().unwrap().push(manifest.plugin.name.clone());
+        self.loaded
+            .lock()
+            .unwrap()
+            .push(manifest.plugin.name.clone());
         Ok(())
     }
 
@@ -265,12 +266,7 @@ async fn install_rejects_duplicate() {
 #[tokio::test]
 async fn enable_rejects_if_dependency_not_enabled() {
     let harness = fresh_harness().await;
-    write_plugin(
-        &harness.plugins_root,
-        "auth",
-        "0.1.0",
-        "",
-    );
+    write_plugin(&harness.plugins_root, "auth", "0.1.0", "");
     write_plugin(
         &harness.plugins_root,
         "blog",

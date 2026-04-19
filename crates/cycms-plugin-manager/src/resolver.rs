@@ -43,9 +43,7 @@ pub fn check_host_compatibility(
 /// # Panics
 /// 仅当传入的 manifest 未经过 [`PluginManifest::validate`] 时才会 panic
 /// （前置条件由调用方保证，内部 API 不可达）。
-pub fn topological_order(
-    manifests: &[PluginManifest],
-) -> Result<Vec<String>, PluginManagerError> {
+pub fn topological_order(manifests: &[PluginManifest]) -> Result<Vec<String>, PluginManagerError> {
     let by_name: BTreeMap<&str, &PluginManifest> = manifests
         .iter()
         .map(|m| (m.plugin.name.as_str(), m))
@@ -168,11 +166,8 @@ cycms = ">=0.1.0"
         if !deps.is_empty() {
             text.push_str("\n[dependencies]\n");
             for (dep, ver, opt) in deps {
-                writeln!(
-                    text,
-                    "{dep} = {{ version = \"{ver}\", optional = {opt} }}"
-                )
-                .expect("write to String never fails");
+                writeln!(text, "{dep} = {{ version = \"{ver}\", optional = {opt} }}")
+                    .expect("write to String never fails");
             }
         }
         text
@@ -218,7 +213,11 @@ cycms = ">=0.2.0, <0.3.0"
     #[test]
     fn dependency_order_is_respected() {
         let ms = vec![
-            parse("app", "0.1.0", &[("auth", "^0.1", false), ("billing", "^0.2", false)]),
+            parse(
+                "app",
+                "0.1.0",
+                &[("auth", "^0.1", false), ("billing", "^0.2", false)],
+            ),
             parse("auth", "0.1.0", &[]),
             parse("billing", "0.2.0", &[("auth", "^0.1", false)]),
         ];

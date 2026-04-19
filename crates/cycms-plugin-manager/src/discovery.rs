@@ -29,9 +29,8 @@ pub fn scan_plugins_dir(root: &Path) -> Result<Vec<DiscoveredPlugin>, PluginMana
     if !root.exists() {
         return Ok(Vec::new());
     }
-    let entries = fs::read_dir(root).map_err(|e| {
-        PluginManagerError::Discovery(format!("read_dir {}: {e}", root.display()))
-    })?;
+    let entries = fs::read_dir(root)
+        .map_err(|e| PluginManagerError::Discovery(format!("read_dir {}: {e}", root.display())))?;
 
     let mut discovered = Vec::new();
     for entry in entries {
@@ -111,7 +110,10 @@ cycms = ">=0.1.0"
         write_plugin(tmp.path(), "mu");
 
         let found = scan_plugins_dir(tmp.path()).unwrap();
-        let names: Vec<_> = found.iter().map(|d| d.manifest.plugin.name.clone()).collect();
+        let names: Vec<_> = found
+            .iter()
+            .map(|d| d.manifest.plugin.name.clone())
+            .collect();
         assert_eq!(names, vec!["alpha", "mu", "zeta"]);
     }
 
