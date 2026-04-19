@@ -5,6 +5,7 @@ use cycms_config::DatabaseDriver;
 use cycms_db::DatabasePool;
 use cycms_events::{DEFAULT_CHANNEL_CAPACITY, Event, EventKind};
 use cycms_kernel::Kernel;
+use serde_json::json;
 use tempfile::tempdir;
 
 fn workspace_system_migrations() -> PathBuf {
@@ -63,6 +64,16 @@ idle_timeout_secs = 60
     assert_eq!(ctx.event_bus.capacity(), DEFAULT_CHANNEL_CAPACITY);
     ctx.event_bus.publish(Event::new(EventKind::ContentCreated));
     assert_eq!(ctx.event_bus.receiver_count(&EventKind::ContentCreated), 0);
+
+    // SettingsManager 已挂入上下文：set 后 get 读回一致
+    ctx.settings_manager
+        .set("system", "locale", json!("en_US"))
+        .await
+        .unwrap();
+    assert_eq!(
+        ctx.settings_manager.get("system", "locale").await.unwrap(),
+        Some(json!("en_US"))
+    );
 }
 
 #[tokio::test]

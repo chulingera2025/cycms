@@ -374,6 +374,8 @@ dependencies = [
  "cycms-events",
  "cycms-migrate",
  "cycms-permission",
+ "cycms-settings",
+ "serde_json",
  "sqlx",
  "tempfile",
  "tokio",

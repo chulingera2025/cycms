@@ -8,8 +8,9 @@ use cycms_db::DatabasePool;
 use cycms_events::EventBus;
 use cycms_migrate::MigrationEngine;
 use cycms_permission::PermissionEngine;
+use cycms_settings::SettingsManager;
 
-// TODO!!!: 任务 8+ 余下占位字段逐步替换为真实子系统类型（SettingsManager、ServiceRegistry 等）
+// TODO!!!: 任务 9+ 余下占位字段逐步替换为真实子系统类型（ServiceRegistry、PluginManager、ContentModelRegistry）
 
 /// 全局应用上下文，Kernel bootstrap 后在所有组件间共享。
 #[non_exhaustive]
@@ -24,12 +25,12 @@ pub struct AppContext {
     pub permission_engine: Arc<PermissionEngine>,
     /// 任务 7：进程内异步事件总线，按 `EventKind` 广播订阅者。
     pub event_bus: Arc<EventBus>,
+    /// 任务 8:系统与插件设置的统一访问门面。
+    pub settings_manager: Arc<SettingsManager>,
     /// 占位：任务 9 替换为 `Arc<ServiceRegistry>`
     pub service_registry: Arc<PlaceholderService>,
     /// 占位：任务 15 替换为 `Arc<PluginManager>`
     pub plugin_manager: Arc<PlaceholderService>,
-    /// 占位：任务 8 替换为 `Arc<SettingsManager>`
-    pub settings_manager: Arc<PlaceholderService>,
     /// 占位：任务 10 替换为 `Arc<ContentModelRegistry>`
     pub content_model_registry: Arc<PlaceholderService>,
 }
@@ -80,6 +81,7 @@ impl Kernel {
         let auth_engine = Arc::new(AuthEngine::new(Arc::clone(&db), self.config.auth.clone())?);
         let permission_engine = Arc::new(PermissionEngine::new(Arc::clone(&db)));
         let event_bus = Arc::new(EventBus::new());
+        let settings_manager = Arc::new(SettingsManager::new(Arc::clone(&db)));
 
         Ok(AppContext {
             config: Arc::new(self.config.clone()),
@@ -87,9 +89,9 @@ impl Kernel {
             auth_engine,
             permission_engine,
             event_bus,
+            settings_manager,
             service_registry: Arc::new(PlaceholderService),
             plugin_manager: Arc::new(PlaceholderService),
-            settings_manager: Arc::new(PlaceholderService),
             content_model_registry: Arc::new(PlaceholderService),
         })
     }

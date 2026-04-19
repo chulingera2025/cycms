@@ -13,11 +13,13 @@ cycms-migrate = { workspace = true }
 cycms-auth = { workspace = true }
 cycms-permission = { workspace = true }
 cycms-events = { workspace = true }
+cycms-settings = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 sqlx = { workspace = true }
+serde_json = { workspace = true }
 tempfile = "3"
 
 [lints]
