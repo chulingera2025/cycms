@@ -27,6 +27,16 @@ tracing = { workspace = true }
 [dev-dependencies]
 cycms-config = { workspace = true }
 cycms-migrate = { workspace = true }
+cycms-auth = { workspace = true }
+cycms-content-engine = { workspace = true }
+cycms-content-model = { workspace = true }
+cycms-events = { workspace = true }
+cycms-media = { workspace = true }
+cycms-plugin-api = { workspace = true }
+cycms-publish = { workspace = true }
+cycms-revision = { workspace = true }
+cycms-settings = { workspace = true }
+async-trait = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tempfile = { workspace = true }
 

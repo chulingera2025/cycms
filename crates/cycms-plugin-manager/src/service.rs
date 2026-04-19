@@ -13,7 +13,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError, RwLock};
 
 use cycms_core::{Error, Result};
 use cycms_db::DatabasePool;
@@ -94,14 +94,15 @@ pub struct PluginManager {
     settings_manager: Arc<SettingsManager>,
     service_registry: Arc<ServiceRegistry>,
     event_bus: Arc<EventBus>,
-    runtimes: HashMap<PluginKind, Arc<dyn PluginRuntime>>,
+    runtimes: RwLock<HashMap<PluginKind, Arc<dyn PluginRuntime>>>,
     plugin_context: Arc<PluginContext>,
     cycms_version: Version,
     plugins_root: PathBuf,
 }
 
 impl PluginManager {
-    /// 构造 `PluginManager`。runtime 按 `kind` 去重（后注入的覆盖先注入的）。
+    /// 构造 `PluginManager`。初始 runtime 按 `kind` 去重（后注入的覆盖先注入的），
+    /// 之后仍可用 [`PluginManager::install_runtime`] 动态追加或替换。
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -114,9 +115,9 @@ impl PluginManager {
         plugin_context: Arc<PluginContext>,
         config: PluginManagerConfig,
     ) -> Self {
-        let mut runtimes: HashMap<PluginKind, Arc<dyn PluginRuntime>> = HashMap::new();
+        let mut runtimes_map: HashMap<PluginKind, Arc<dyn PluginRuntime>> = HashMap::new();
         for rt in config.runtimes {
-            runtimes.insert(rt.kind(), rt);
+            runtimes_map.insert(rt.kind(), rt);
         }
         Self {
             repository: PluginRepository::new(db),
@@ -125,11 +126,21 @@ impl PluginManager {
             settings_manager,
             service_registry,
             event_bus,
-            runtimes,
+            runtimes: RwLock::new(runtimes_map),
             plugin_context,
             cycms_version: config.cycms_version,
             plugins_root: config.plugins_root,
         }
+    }
+
+    /// 注册或替换一个运行时（按 `kind` 去重）。Kernel 在任务 16 / 17 完成后调用此方法
+    /// 注入 Native / Wasm runtime；测试场景亦可用于挂载 mock 实现。
+    pub fn install_runtime(&self, runtime: Arc<dyn PluginRuntime>) {
+        let mut guard = self
+            .runtimes
+            .write()
+            .unwrap_or_else(PoisonError::into_inner);
+        guard.insert(runtime.kind(), runtime);
     }
 
     /// 安装一个从磁盘发现的插件：校验 → 迁移 → 注册权限 → 插入记录。
@@ -313,11 +324,18 @@ impl PluginManager {
             })
     }
 
-    fn runtime_for(&self, kind: PluginKind) -> Result<&Arc<dyn PluginRuntime>> {
-        self.runtimes.get(&kind).ok_or_else(|| Error::PluginError {
-            message: format!("no runtime registered for kind {kind}"),
-            source: None,
-        })
+    fn runtime_for(&self, kind: PluginKind) -> Result<Arc<dyn PluginRuntime>> {
+        let guard = self
+            .runtimes
+            .read()
+            .unwrap_or_else(PoisonError::into_inner);
+        guard
+            .get(&kind)
+            .cloned()
+            .ok_or_else(|| Error::PluginError {
+                message: format!("no runtime registered for kind {kind}"),
+                source: None,
+            })
     }
 
     fn manifest_from_record(record: &PluginRecord) -> Result<PluginManifest> {
