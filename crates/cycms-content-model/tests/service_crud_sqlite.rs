@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use cycms_config::{DatabaseConfig, DatabaseDriver};
 use cycms_content_model::{
-    ContentModelRegistry, ContentModelError, ContentTypeKind, CreateContentTypeInput,
+    ContentModelError, ContentModelRegistry, ContentTypeKind, CreateContentTypeInput,
     FieldDefinition, FieldType, FieldTypeHandler, FieldTypeRegistry, UpdateContentTypeInput,
     ValidationRule,
 };
