@@ -331,6 +331,25 @@ dependencies = [
 [[package]]
 name = "cycms-content-engine"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "cycms-auth",
+ "cycms-config",
+ "cycms-content-model",
+ "cycms-core",
+ "cycms-db",
+ "cycms-events",
+ "cycms-migrate",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "cycms-content-model"

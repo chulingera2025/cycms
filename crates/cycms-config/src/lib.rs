@@ -13,6 +13,7 @@ pub struct AppConfig {
     pub server: ServerConfig,
     pub database: DatabaseConfig,
     pub auth: AuthConfig,
+    pub content: ContentConfig,
     pub media: MediaConfig,
     pub plugins: PluginsConfig,
 }
@@ -75,6 +76,23 @@ pub struct Argon2Config {
     pub m_cost: u32,
     pub t_cost: u32,
     pub p_cost: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct ContentConfig {
+    pub default_delete_mode: DeleteMode,
+    pub default_page_size: u64,
+    pub max_page_size: u64,
+}
+
+/// 内容删除策略。`Soft` 将实例状态标记为 `archived` 保留数据，`Hard` 直接物理删除。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum DeleteMode {
+    #[default]
+    Soft,
+    Hard,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -151,6 +169,16 @@ impl Default for Argon2Config {
             m_cost: 19_456,
             t_cost: 2,
             p_cost: 1,
+        }
+    }
+}
+
+impl Default for ContentConfig {
+    fn default() -> Self {
+        Self {
+            default_delete_mode: DeleteMode::Soft,
+            default_page_size: 20,
+            max_page_size: 100,
         }
     }
 }
@@ -368,7 +396,8 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
 
     use super::{
-        AppConfig, DEFAULT_CONFIG_FILE, DatabaseDriver, Error, apply_env_overrides_from_iter,
+        AppConfig, DEFAULT_CONFIG_FILE, DatabaseDriver, DeleteMode, Error,
+        apply_env_overrides_from_iter,
     };
 
     static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -391,6 +420,11 @@ url = "sqlite://cycms.db"
 [auth]
 jwt_secret = "test-secret"
 
+[content]
+default_delete_mode = "hard"
+default_page_size = 50
+max_page_size = 200
+
 [media]
 upload_dir = "media"
 
@@ -412,6 +446,9 @@ wasm_enabled = false
         assert_eq!(config.database.url, "sqlite://cycms.db");
         assert_eq!(config.database.max_connections, 10);
         assert_eq!(config.auth.jwt_secret, "test-secret");
+        assert_eq!(config.content.default_delete_mode, DeleteMode::Hard);
+        assert_eq!(config.content.default_page_size, 50);
+        assert_eq!(config.content.max_page_size, 200);
         assert_eq!(config.media.upload_dir, "media");
         assert!(!config.plugins.wasm_enabled);
     }
@@ -467,6 +504,33 @@ wasm_enabled = false
             ]
         );
         assert!(!config.plugins.wasm_enabled);
+    }
+
+    #[test]
+    fn content_config_defaults_to_soft_delete_and_safe_page_size() {
+        let config = AppConfig::default();
+        assert_eq!(config.content.default_delete_mode, DeleteMode::Soft);
+        assert_eq!(config.content.default_page_size, 20);
+        assert_eq!(config.content.max_page_size, 100);
+    }
+
+    #[test]
+    fn env_overrides_content_delete_mode_and_page_caps() {
+        let mut config = AppConfig::default();
+
+        apply_env_overrides_from_iter(
+            &mut config,
+            [
+                ("CYCMS__CONTENT__DEFAULT_DELETE_MODE", "hard"),
+                ("CYCMS__CONTENT__DEFAULT_PAGE_SIZE", "10"),
+                ("CYCMS__CONTENT__MAX_PAGE_SIZE", "200"),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(config.content.default_delete_mode, DeleteMode::Hard);
+        assert_eq!(config.content.default_page_size, 10);
+        assert_eq!(config.content.max_page_size, 200);
     }
 
     #[test]
