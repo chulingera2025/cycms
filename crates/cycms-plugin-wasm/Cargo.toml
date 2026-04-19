@@ -5,5 +5,37 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[dependencies]
+cycms-core = { workspace = true }
+cycms-auth = { workspace = true }
+cycms-content-engine = { workspace = true }
+cycms-content-model = { workspace = true }
+cycms-db = { workspace = true }
+cycms-events = { workspace = true }
+cycms-permission = { workspace = true }
+cycms-plugin-api = { workspace = true }
+cycms-plugin-manager = { workspace = true }
+cycms-settings = { workspace = true }
+async-trait = { workspace = true }
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time", "rt"] }
+tracing = { workspace = true }
+uuid = { workspace = true }
+wasmtime = { version = "43", features = ["component-model", "async", "cache"] }
+wasmtime-wasi = { version = "43" }
+
+[dev-dependencies]
+cycms-config = { workspace = true }
+cycms-media = { workspace = true }
+cycms-migrate = { workspace = true }
+cycms-publish = { workspace = true }
+cycms-revision = { workspace = true }
+semver = "1"
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+
 [lints]
 workspace = true
