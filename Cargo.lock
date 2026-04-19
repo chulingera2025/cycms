@@ -538,12 +538,20 @@ dependencies = [
 name = "cycms-plugin-manager"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "cycms-config",
  "cycms-core",
+ "cycms-db",
+ "cycms-migrate",
  "cycms-permission",
  "semver",
  "serde",
+ "serde_json",
+ "sqlx",
  "thiserror",
+ "tokio",
  "toml",
+ "uuid",
 ]
 
 [[package]]

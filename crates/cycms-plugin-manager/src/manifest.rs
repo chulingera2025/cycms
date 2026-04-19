@@ -42,6 +42,34 @@ pub enum PluginKind {
     Wasm,
 }
 
+impl PluginKind {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Native => "native",
+            Self::Wasm => "wasm",
+        }
+    }
+}
+
+impl std::fmt::Display for PluginKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for PluginKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "native" => Ok(Self::Native),
+            "wasm" => Ok(Self::Wasm),
+            other => Err(format!("unknown plugin kind: {other}")),
+        }
+    }
+}
+
 /// 宿主兼容性（Req 20.2）。`cycms` 为 `SemVer` range 字面量，安装期比对当前 cycms 版本。
 #[derive(Debug, Clone, Deserialize)]
 pub struct CompatibilitySpec {

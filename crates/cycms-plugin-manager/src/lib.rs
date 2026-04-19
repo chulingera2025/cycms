@@ -10,9 +10,13 @@
 
 mod error;
 mod manifest;
+mod model;
+mod repository;
 
 pub use error::PluginManagerError;
 pub use manifest::{
     CompatibilitySpec, DependencySpec, FrontendSpec, PermissionEntry, PermissionsSpec, PluginKind,
     PluginManifest, PluginMeta,
 };
+pub use model::{NewPluginRow, PluginRecord, PluginStatus};
+pub use repository::PluginRepository;
