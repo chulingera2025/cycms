@@ -95,6 +95,7 @@ idle_timeout_secs = 60
             "system.events",
             "system.media",
             "system.permission",
+            "system.plugin_manager",
             "system.publish",
             "system.revision",
             "system.settings",

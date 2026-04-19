@@ -20,6 +20,8 @@ cycms-revision = { workspace = true }
 cycms-publish = { workspace = true }
 cycms-media = { workspace = true }
 cycms-plugin-api = { workspace = true }
+cycms-plugin-manager = { workspace = true }
+semver = "1"
 tokio = { workspace = true }
 
 [dev-dependencies]

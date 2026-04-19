@@ -5,18 +5,18 @@ use cycms_auth::AuthEngine;
 use cycms_config::AppConfig;
 use cycms_content_engine::ContentEngine;
 use cycms_content_model::{ContentModelRegistry, FieldTypeRegistry, seed_default_types};
-use cycms_core::Result;
+use cycms_core::{Error, Result};
 use cycms_db::DatabasePool;
 use cycms_events::EventBus;
 use cycms_media::MediaManager;
 use cycms_migrate::MigrationEngine;
 use cycms_permission::PermissionEngine;
-use cycms_plugin_api::ServiceRegistry;
+use cycms_plugin_api::{PluginContext, ServiceRegistry};
+use cycms_plugin_manager::{PluginManager, PluginManagerConfig};
 use cycms_publish::PublishManager;
 use cycms_revision::RevisionManager;
 use cycms_settings::SettingsManager;
-
-// TODO!!!: 任务 15 余下占位字段替换为真实子系统类型（`PluginManager`）
+use semver::Version;
 
 /// 全局应用上下文，Kernel bootstrap 后在所有组件间共享。
 #[non_exhaustive]
@@ -45,12 +45,9 @@ pub struct AppContext {
     pub publish_manager: Arc<PublishManager>,
     /// 任务 14：媒体资产管理门面（上传/查询/删除）。
     pub media_manager: Arc<MediaManager>,
-    /// 占位：任务 15 替换为 `Arc<PluginManager>`
-    pub plugin_manager: Arc<PlaceholderService>,
+    /// 任务 15：插件生命周期管理器，封装 install / enable / disable / uninstall 状态机。
+    pub plugin_manager: Arc<PluginManager>,
 }
-
-/// 各子系统实现前的临时占位类型，任务 2–21 逐步替换。
-pub struct PlaceholderService;
 
 /// 应用生命周期管理入口。
 #[allow(dead_code)]
@@ -76,7 +73,8 @@ impl Kernel {
     /// 初始化所有子系统并返回 [`AppContext`]。
     ///
     /// 初始化顺序：Config → DB → Migration → Auth → Permission → `EventBus` →
-    /// `ServiceRegistry` → `ContentModel` → `RevisionManager` → `ContentEngine` → API
+    /// `ServiceRegistry` → `ContentModel` → `RevisionManager` → `ContentEngine` →
+    /// `PluginContext` → `PluginManager` → API
     ///
     /// 当 `system_migrations_dir` 为 `Some` 时会执行系统迁移并注入默认 `page` / `post`
     /// 内容类型；传 `None` 跳过迁移与 seed，适合只想构造上下文做诊断的调用方。
@@ -86,11 +84,10 @@ impl Kernel {
     pub async fn bootstrap(&self, system_migrations_dir: Option<&Path>) -> Result<AppContext> {
         let db = Arc::new(DatabasePool::connect(&self.config.database).await?);
 
+        let migration_engine = Arc::new(MigrationEngine::new(Arc::clone(&db)));
         let migrations_applied = system_migrations_dir.is_some();
         if let Some(dir) = system_migrations_dir {
-            MigrationEngine::new(Arc::clone(&db))
-                .run_system_migrations(dir)
-                .await?;
+            migration_engine.run_system_migrations(dir).await?;
         }
 
         let auth_engine = Arc::new(AuthEngine::new(Arc::clone(&db), self.config.auth.clone())?);
@@ -134,6 +131,44 @@ impl Kernel {
             &media_manager,
         )?;
 
+        let plugin_context = Arc::new(PluginContext::new(
+            Arc::clone(&db),
+            Arc::clone(&auth_engine),
+            Arc::clone(&permission_engine),
+            Arc::clone(&event_bus),
+            Arc::clone(&settings_manager),
+            Arc::clone(&content_model),
+            Arc::clone(&content_engine),
+            Arc::clone(&revision_manager),
+            Arc::clone(&publish_manager),
+            Arc::clone(&media_manager),
+            Arc::clone(&service_registry),
+        ));
+
+        let cycms_version = Version::parse(env!("CARGO_PKG_VERSION")).map_err(|e| {
+            Error::Internal {
+                message: format!("parse cycms version: {e}"),
+                source: None,
+            }
+        })?;
+        let plugins_root = resolve_plugins_root(self.config_path.as_deref(), &self.config.plugins.directory);
+        let plugin_manager = Arc::new(PluginManager::new(
+            Arc::clone(&db),
+            Arc::clone(&migration_engine),
+            Arc::clone(&permission_engine),
+            Arc::clone(&settings_manager),
+            Arc::clone(&service_registry),
+            Arc::clone(&event_bus),
+            Arc::clone(&plugin_context),
+            PluginManagerConfig {
+                cycms_version,
+                plugins_root,
+                // 任务 16 / 17 完成后在此处注入 Native / Wasm runtime
+                runtimes: Vec::new(),
+            },
+        ));
+        service_registry.register("system.plugin_manager", Arc::clone(&plugin_manager))?;
+
         Ok(AppContext {
             config: Arc::new(self.config.clone()),
             db,
@@ -147,7 +182,7 @@ impl Kernel {
             revision_manager,
             publish_manager,
             media_manager,
-            plugin_manager: Arc::new(PlaceholderService),
+            plugin_manager,
         })
     }
 
@@ -201,4 +236,18 @@ fn register_core_services(
     registry.register("system.revision", Arc::clone(revision_manager))?;
     registry.register("system.publish", Arc::clone(publish_manager))?;
     Ok(())
+}
+
+/// 解析 `plugins.directory` 到绝对路径：相对路径时以配置文件所在目录为基准，
+/// 否则使用当前工作目录；已是绝对路径时直接返回。
+fn resolve_plugins_root(config_path: Option<&Path>, directory: &str) -> PathBuf {
+    let raw = PathBuf::from(directory);
+    if raw.is_absolute() {
+        return raw;
+    }
+    let base = config_path
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .unwrap_or_default();
+    base.join(raw)
 }
