@@ -11,16 +11,20 @@
 //! 模块结构（按 Step 分批落地）：
 //! - [`error`]：`ContentEngineError` + 跨 crate 映射；
 //! - [`model`]：`ContentEntry` / `ContentStatus` / 分页响应等数据结构；
-//! - TODO!!!: Step 3 加入 `repository`（三方言 CRUD）；
+//! - [`repository`]：`content_entries` 表的三方言 CRUD；
 //! - TODO!!!: Step 4 加入 `query`（筛选 / 排序 / 分页）；
 //! - TODO!!!: Step 5 加入 `populate`（单层关联加载）；
 //! - TODO!!!: Step 6/7 加入 `service`（`ContentEngine` 门面 + `EventBus` 集成）。
 
 mod error;
 mod model;
+mod repository;
 
 pub use error::{ContentEngineError, ReferenceViolation};
 pub use model::{
     ContentEntry, ContentStatus, CreateEntryInput, PaginatedResponse, PaginationMeta,
     UpdateEntryInput,
+};
+pub use repository::{
+    ContentEntryRepository, NewContentEntryRow, UpdateContentEntryRow, new_content_entry_id,
 };
