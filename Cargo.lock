@@ -537,6 +537,14 @@ dependencies = [
 [[package]]
 name = "cycms-plugin-manager"
 version = "0.1.0"
+dependencies = [
+ "cycms-core",
+ "cycms-permission",
+ "semver",
+ "serde",
+ "thiserror",
+ "toml",
+]
 
 [[package]]
 name = "cycms-plugin-native"
