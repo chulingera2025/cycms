@@ -11,6 +11,7 @@ cycms-db = { workspace = true }
 cycms-config = { workspace = true }
 cycms-content-model = { workspace = true }
 cycms-events = { workspace = true }
+cycms-revision = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

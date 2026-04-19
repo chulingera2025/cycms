@@ -22,6 +22,7 @@ use cycms_content_model::{ContentModelRegistry, ContentTypeKind};
 use cycms_core::Result;
 use cycms_db::DatabasePool;
 use cycms_events::{Event, EventBus, EventKind};
+use cycms_revision::{CreateRevisionInput, RevisionManager};
 use serde_json::json;
 
 use crate::error::{ContentEngineError, ReferenceViolation};
@@ -35,14 +36,15 @@ use crate::repository::{
     ContentEntryRepository, NewContentEntryRow, UpdateContentEntryRow, new_content_entry_id,
 };
 
-/// 内容引擎服务门面。聚合 repository、`ContentModelRegistry`、`EventBus` 与
-/// `ContentConfig`，对外提供高层 CRUD。
+/// 内容引擎服务门面。聚合 repository、`ContentModelRegistry`、`EventBus`、
+/// `RevisionManager` 与 `ContentConfig`，对外提供高层 CRUD。
 pub struct ContentEngine {
     db: Arc<DatabasePool>,
     repo: ContentEntryRepository,
     content_model: Arc<ContentModelRegistry>,
     event_bus: Arc<EventBus>,
     content_config: ContentConfig,
+    revision_manager: Arc<RevisionManager>,
 }
 
 impl ContentEngine {
@@ -53,6 +55,7 @@ impl ContentEngine {
         content_model: Arc<ContentModelRegistry>,
         event_bus: Arc<EventBus>,
         content_config: ContentConfig,
+        revision_manager: Arc<RevisionManager>,
     ) -> Self {
         let repo = ContentEntryRepository::new(Arc::clone(&db));
         Self {
@@ -61,6 +64,7 @@ impl ContentEngine {
             content_model,
             event_bus,
             content_config,
+            revision_manager,
         }
     }
 
@@ -120,6 +124,17 @@ impl ContentEngine {
                     "content_type_api_id": input.content_type_api_id,
                 })),
         );
+
+        // 创建初始版本快照（失败传播，保证 current_version_id 一致性）
+        self.revision_manager
+            .create_revision(CreateRevisionInput {
+                content_entry_id: entry.id.clone(),
+                snapshot: entry.fields.clone(),
+                actor_id: input.actor_id.clone(),
+                change_summary: None,
+            })
+            .await?;
+
         Ok(entry)
     }
 
@@ -193,6 +208,17 @@ impl ContentEngine {
                     "content_type_api_id": type_api_id,
                 })),
         );
+
+        // 追加新版本快照
+        self.revision_manager
+            .create_revision(CreateRevisionInput {
+                content_entry_id: updated.id.clone(),
+                snapshot: updated.fields.clone(),
+                actor_id: input.actor_id.clone(),
+                change_summary: None,
+            })
+            .await?;
+
         Ok(updated)
     }
 

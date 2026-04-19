@@ -341,6 +341,7 @@ dependencies = [
  "cycms-db",
  "cycms-events",
  "cycms-migrate",
+ "cycms-revision",
  "serde",
  "serde_json",
  "sqlx",
@@ -422,6 +423,7 @@ dependencies = [
  "cycms-migrate",
  "cycms-permission",
  "cycms-plugin-api",
+ "cycms-revision",
  "cycms-settings",
  "serde_json",
  "sqlx",
@@ -492,6 +494,7 @@ dependencies = [
  "cycms-db",
  "cycms-events",
  "cycms-permission",
+ "cycms-revision",
  "cycms-settings",
  "thiserror",
  "tokio",
@@ -517,6 +520,23 @@ version = "0.1.0"
 [[package]]
 name = "cycms-revision"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "cycms-auth",
+ "cycms-config",
+ "cycms-content-engine",
+ "cycms-content-model",
+ "cycms-core",
+ "cycms-db",
+ "cycms-migrate",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
 
 [[package]]
 name = "cycms-settings"

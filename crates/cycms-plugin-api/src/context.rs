@@ -6,6 +6,7 @@ use cycms_content_model::ContentModelRegistry;
 use cycms_db::DatabasePool;
 use cycms_events::EventBus;
 use cycms_permission::PermissionEngine;
+use cycms_revision::RevisionManager;
 use cycms_settings::SettingsManager;
 
 use crate::registry::ServiceRegistry;
@@ -35,6 +36,8 @@ pub struct PluginContext {
     pub content_model: Arc<ContentModelRegistry>,
     /// 内容实例引擎：插件可执行 CRUD / 查询 / 删除（任务 11）。
     pub content_engine: Arc<ContentEngine>,
+    /// 内容版本快照与回滚门面（任务 12）。
+    pub revision_manager: Arc<RevisionManager>,
     /// 插件间服务发现与调用。
     pub service_registry: Arc<ServiceRegistry>,
 }
@@ -51,6 +54,7 @@ impl PluginContext {
         settings_manager: Arc<SettingsManager>,
         content_model: Arc<ContentModelRegistry>,
         content_engine: Arc<ContentEngine>,
+        revision_manager: Arc<RevisionManager>,
         service_registry: Arc<ServiceRegistry>,
     ) -> Self {
         Self {
@@ -61,6 +65,7 @@ impl PluginContext {
             settings_manager,
             content_model,
             content_engine,
+            revision_manager,
             service_registry,
         }
     }

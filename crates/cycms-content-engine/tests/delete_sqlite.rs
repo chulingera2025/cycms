@@ -12,6 +12,7 @@ use cycms_core::{Error, Result};
 use cycms_db::DatabasePool;
 use cycms_events::{Event, EventBus, EventHandler, EventKind};
 use cycms_migrate::MigrationEngine;
+use cycms_revision::RevisionManager;
 use serde_json::json;
 use sqlx::SqlitePool;
 
@@ -116,7 +117,13 @@ async fn make_setup(default_mode: DeleteMode) -> Setup {
         default_page_size: 20,
         max_page_size: 100,
     };
-    let engine = ContentEngine::new(Arc::clone(&pool), model, Arc::clone(&bus), cfg);
+    let engine = ContentEngine::new(
+        Arc::clone(&pool),
+        model,
+        Arc::clone(&bus),
+        cfg,
+        Arc::new(RevisionManager::new(Arc::clone(&pool))),
+    );
     let repo = ContentEntryRepository::new(Arc::clone(&pool));
     Setup {
         pool,

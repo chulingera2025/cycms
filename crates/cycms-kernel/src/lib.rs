@@ -11,6 +11,7 @@ use cycms_events::EventBus;
 use cycms_migrate::MigrationEngine;
 use cycms_permission::PermissionEngine;
 use cycms_plugin_api::ServiceRegistry;
+use cycms_revision::RevisionManager;
 use cycms_settings::SettingsManager;
 
 // TODO!!!: 任务 15 余下占位字段替换为真实子系统类型（`PluginManager`）
@@ -36,6 +37,8 @@ pub struct AppContext {
     pub content_model: Arc<ContentModelRegistry>,
     /// 任务 11：内容实例 CRUD + 查询引擎 + `EventBus` 集成门面。
     pub content_engine: Arc<ContentEngine>,
+    /// 任务 12：内容版本快照与回滚门面。
+    pub revision_manager: Arc<RevisionManager>,
     /// 占位：任务 15 替换为 `Arc<PluginManager>`
     pub plugin_manager: Arc<PlaceholderService>,
 }
@@ -67,7 +70,7 @@ impl Kernel {
     /// 初始化所有子系统并返回 [`AppContext`]。
     ///
     /// 初始化顺序：Config → DB → Migration → Auth → Permission → `EventBus` →
-    /// `ServiceRegistry` → `ContentModel` → `PluginManager` → API
+    /// `ServiceRegistry` → `ContentModel` → `RevisionManager` → `ContentEngine` → API
     ///
     /// 当 `system_migrations_dir` 为 `Some` 时会执行系统迁移并注入默认 `page` / `post`
     /// 内容类型；传 `None` 跳过迁移与 seed，适合只想构造上下文做诊断的调用方。
@@ -97,11 +100,13 @@ impl Kernel {
             seed_default_types(&content_model).await?;
         }
         let service_registry = Arc::new(ServiceRegistry::new());
+        let revision_manager = Arc::new(RevisionManager::new(Arc::clone(&db)));
         let content_engine = Arc::new(ContentEngine::new(
             Arc::clone(&db),
             Arc::clone(&content_model),
             Arc::clone(&event_bus),
             self.config.content.clone(),
+            Arc::clone(&revision_manager),
         ));
         register_core_services(
             &service_registry,
@@ -112,6 +117,7 @@ impl Kernel {
             &settings_manager,
             &content_model,
             &content_engine,
+            &revision_manager,
         )?;
 
         Ok(AppContext {
@@ -124,6 +130,7 @@ impl Kernel {
             service_registry,
             content_model,
             content_engine,
+            revision_manager,
             plugin_manager: Arc::new(PlaceholderService),
         })
     }
@@ -163,6 +170,7 @@ fn register_core_services(
     settings_manager: &Arc<SettingsManager>,
     content_model: &Arc<ContentModelRegistry>,
     content_engine: &Arc<ContentEngine>,
+    revision_manager: &Arc<RevisionManager>,
 ) -> Result<()> {
     registry.register("system.db", Arc::clone(db))?;
     registry.register("system.auth", Arc::clone(auth_engine))?;
@@ -171,5 +179,6 @@ fn register_core_services(
     registry.register("system.settings", Arc::clone(settings_manager))?;
     registry.register("system.content_model", Arc::clone(content_model))?;
     registry.register("system.content_engine", Arc::clone(content_engine))?;
+    registry.register("system.revision", Arc::clone(revision_manager))?;
     Ok(())
 }

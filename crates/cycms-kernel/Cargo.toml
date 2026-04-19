@@ -16,6 +16,7 @@ cycms-events = { workspace = true }
 cycms-settings = { workspace = true }
 cycms-content-model = { workspace = true }
 cycms-content-engine = { workspace = true }
+cycms-revision = { workspace = true }
 cycms-plugin-api = { workspace = true }
 tokio = { workspace = true }
 
@@ -23,6 +24,7 @@ tokio = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 sqlx = { workspace = true }
 serde_json = { workspace = true }
+cycms-revision = { workspace = true }
 tempfile = "3"
 
 [lints]
