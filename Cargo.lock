@@ -456,6 +456,21 @@ version = "0.1.0"
 [[package]]
 name = "cycms-settings"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "cycms-config",
+ "cycms-core",
+ "cycms-db",
+ "cycms-migrate",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "der"
