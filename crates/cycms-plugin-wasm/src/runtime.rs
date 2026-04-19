@@ -22,16 +22,22 @@
 //! cycms 对 Wasm 插件完全信任，不做 fuel / epoch 资源限制；仅依靠 wasmtime 对 trap
 //! 的天然进程隔离保证单插件崩溃不影响主进程。Host functions 与 WASI 均无白名单。
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::{Arc, PoisonError, RwLock};
 
 use async_trait::async_trait;
 use axum::Router;
+use axum::body::Body;
+use axum::http::{HeaderName, HeaderValue, Request, Response, StatusCode};
+use axum::routing::{self, MethodFilter};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use cycms_core::{Error, Result};
 use cycms_events::{Event, EventBus, EventHandler, EventKind, SubscriptionHandle};
 use cycms_plugin_api::PluginContext;
 use cycms_plugin_manager::{PluginKind, PluginManifest, PluginRuntime};
+use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::{info, warn};
 use wasmtime::component::{Component, Linker, ResourceTable};
@@ -53,7 +59,8 @@ struct LoadedWasmPlugin {
     store: Arc<AsyncMutex<Store<HostState>>>,
     bindings: Arc<Plugin>,
     subscriptions: Vec<SubscriptionHandle>,
-    /// TODO!!!: 17.4b 将 `HostState.pending_routes` 合成 axum Router 存入此处。
+    /// 由 [`compose_router`] 根据 guest 的 `route.register` 合成的 axum `Router`；没有
+    /// 路由登记时为 `None`。由 `ApiGateway`（任务 18）合并到主路由表。
     routes: Option<Router>,
 }
 
@@ -178,14 +185,16 @@ impl PluginRuntime for WasmPluginRuntime {
             subscriptions.push(ctx.event_bus.subscribe(kind, handler));
         }
 
-        if !pending_routes.is_empty() {
-            // TODO!!!: 17.4b 在 compose_router 中把 pending_routes 合成 axum Router。
-            warn!(
-                plugin = %plugin_name,
-                count = pending_routes.len(),
-                "wasm route registration recorded but router composition deferred to 17.4b"
-            );
-        }
+        let routes = if pending_routes.is_empty() {
+            None
+        } else {
+            Some(compose_router(
+                &plugin_name,
+                pending_routes,
+                &store_shared,
+                &bindings,
+            ))
+        };
 
         let mut loaded = self.loaded.write().unwrap_or_else(PoisonError::into_inner);
         loaded.insert(
@@ -194,7 +203,7 @@ impl PluginRuntime for WasmPluginRuntime {
                 store: store_shared,
                 bindings,
                 subscriptions,
-                routes: None,
+                routes,
             },
         );
         info!(plugin = %plugin_name, "wasm plugin loaded");
@@ -329,4 +338,176 @@ impl EventHandler for WasmEventHandler {
 #[allow(dead_code)]
 fn _event_bus_marker(_b: &EventBus) {
     // 仅用于静态确认 EventBus 在 runtime 生命周期内可用；实际订阅走 ctx.event_bus。
+}
+
+/// 路由代理共享状态：每个 (path, method) 组合一份，供 axum handler 闭包持有。
+struct ProxyShared {
+    plugin_name: String,
+    store: Arc<AsyncMutex<Store<HostState>>>,
+    bindings: Arc<Plugin>,
+}
+
+#[derive(Serialize)]
+struct WasmHttpRequestPayload {
+    method: String,
+    url: String,
+    headers: Vec<(String, String)>,
+    #[serde(rename = "body-base64")]
+    body_base64: String,
+}
+
+#[derive(Deserialize)]
+struct WasmHttpResponsePayload {
+    status: u16,
+    #[serde(default)]
+    headers: Vec<(String, String)>,
+    #[serde(default, rename = "body-base64")]
+    body_base64: String,
+}
+
+fn method_to_filter(m: &str) -> Option<MethodFilter> {
+    Some(match m {
+        "GET" => MethodFilter::GET,
+        "POST" => MethodFilter::POST,
+        "PUT" => MethodFilter::PUT,
+        "PATCH" => MethodFilter::PATCH,
+        "DELETE" => MethodFilter::DELETE,
+        "HEAD" => MethodFilter::HEAD,
+        "OPTIONS" => MethodFilter::OPTIONS,
+        _ => return None,
+    })
+}
+
+/// 把 guest 登记的 `(path, method)` 列表合成单个 axum `Router`。
+///
+/// 同一 path 上的多个 method 被合并成一个带 [`MethodFilter`] 位掩码的 handler——
+/// 所有方法都走同一个 `proxy_handle` → guest `handle-http`，guest 内部按 `method`
+/// 自行分派。
+fn compose_router(
+    plugin_name: &str,
+    pending_routes: Vec<(String, String)>,
+    store: &Arc<AsyncMutex<Store<HostState>>>,
+    bindings: &Arc<Plugin>,
+) -> Router {
+    let mut by_path: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (p, m) in pending_routes {
+        by_path.entry(p).or_default().push(m);
+    }
+
+    let mut router = Router::new();
+    for (path, methods) in by_path {
+        let mut filter: Option<MethodFilter> = None;
+        for m in &methods {
+            if let Some(f) = method_to_filter(m) {
+                filter = Some(match filter {
+                    Some(existing) => existing.or(f),
+                    None => f,
+                });
+            }
+        }
+        let Some(filter) = filter else {
+            continue;
+        };
+
+        let shared = Arc::new(ProxyShared {
+            plugin_name: plugin_name.to_owned(),
+            store: Arc::clone(store),
+            bindings: Arc::clone(bindings),
+        });
+        let handler = move |req: Request<Body>| {
+            let shared = Arc::clone(&shared);
+            async move { proxy_handle(shared, req).await }
+        };
+        router = router.route(&path, routing::on(filter, handler));
+    }
+    router
+}
+
+async fn proxy_handle(
+    shared: Arc<ProxyShared>,
+    req: Request<Body>,
+) -> std::result::Result<Response<Body>, StatusCode> {
+    let method = req.method().as_str().to_owned();
+    let uri = req.uri().clone();
+    let url = match uri.query() {
+        Some(q) => format!("{}?{}", uri.path(), q),
+        None => uri.path().to_owned(),
+    };
+    let headers: Vec<(String, String)> = req
+        .headers()
+        .iter()
+        .map(|(k, v)| (k.as_str().to_owned(), v.to_str().unwrap_or("").to_owned()))
+        .collect();
+    let body_bytes = match axum::body::to_bytes(req.into_body(), usize::MAX).await {
+        Ok(b) => b.to_vec(),
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    let payload = WasmHttpRequestPayload {
+        method,
+        url,
+        headers,
+        body_base64: BASE64.encode(&body_bytes),
+    };
+    let request_json = match serde_json::to_string(&payload) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(plugin = %shared.plugin_name, error = %e, "wasm handle-http: serialize request");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    let result = {
+        let mut guard = shared.store.lock().await;
+        shared
+            .bindings
+            .call_handle_http(&mut *guard, &request_json)
+            .await
+    };
+    match result {
+        Ok(Ok(response_json)) => parse_wasm_response(&shared.plugin_name, &response_json),
+        Ok(Err(msg)) => {
+            warn!(plugin = %shared.plugin_name, error = %msg, "wasm handle-http returned inner error");
+            Err(StatusCode::BAD_GATEWAY)
+        }
+        Err(e) => {
+            warn!(plugin = %shared.plugin_name, error = %e, "wasm handle-http trap");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+fn parse_wasm_response(
+    plugin_name: &str,
+    response_json: &str,
+) -> std::result::Result<Response<Body>, StatusCode> {
+    let resp: WasmHttpResponsePayload = match serde_json::from_str(response_json) {
+        Ok(r) => r,
+        Err(e) => {
+            warn!(plugin = %plugin_name, error = %e, "wasm handle-http: deserialize response");
+            return Err(StatusCode::BAD_GATEWAY);
+        }
+    };
+    let body_bytes = match BASE64.decode(resp.body_base64.as_bytes()) {
+        Ok(b) => b,
+        Err(e) => {
+            warn!(plugin = %plugin_name, error = %e, "wasm handle-http: invalid body-base64");
+            return Err(StatusCode::BAD_GATEWAY);
+        }
+    };
+    let mut builder = Response::builder().status(resp.status);
+    for (k, v) in resp.headers {
+        match (HeaderName::from_bytes(k.as_bytes()), HeaderValue::from_str(&v)) {
+            (Ok(name), Ok(val)) => {
+                builder = builder.header(name, val);
+            }
+            _ => {
+                warn!(plugin = %plugin_name, header = %k, "wasm handle-http: skipping invalid header");
+            }
+        }
+    }
+    builder.body(Body::from(body_bytes)).map_err(|e| {
+        warn!(plugin = %plugin_name, error = %e, "wasm handle-http: build response");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
