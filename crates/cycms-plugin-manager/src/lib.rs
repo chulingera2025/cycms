@@ -8,11 +8,14 @@
 //! 为让本 crate 独立于任务 16 / 17 推进，`PluginRuntime` 抽象定义在本 crate 内，
 //! `cycms-plugin-native` / `cycms-plugin-wasm` 反向依赖并实现该 trait，避免循环。
 
+mod discovery;
 mod error;
 mod manifest;
 mod model;
 mod repository;
+mod resolver;
 
+pub use discovery::{DiscoveredPlugin, scan_plugins_dir};
 pub use error::PluginManagerError;
 pub use manifest::{
     CompatibilitySpec, DependencySpec, FrontendSpec, PermissionEntry, PermissionsSpec, PluginKind,
@@ -20,3 +23,4 @@ pub use manifest::{
 };
 pub use model::{NewPluginRow, PluginRecord, PluginStatus};
 pub use repository::PluginRepository;
+pub use resolver::{check_host_compatibility, reverse_dependencies, topological_order};
