@@ -436,6 +436,7 @@ dependencies = [
  "cycms-permission",
  "cycms-plugin-api",
  "cycms-plugin-manager",
+ "cycms-plugin-native",
  "cycms-publish",
  "cycms-revision",
  "cycms-settings",
@@ -571,6 +572,29 @@ dependencies = [
 [[package]]
 name = "cycms-plugin-native"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "cycms-auth",
+ "cycms-config",
+ "cycms-content-engine",
+ "cycms-content-model",
+ "cycms-core",
+ "cycms-db",
+ "cycms-events",
+ "cycms-media",
+ "cycms-migrate",
+ "cycms-permission",
+ "cycms-plugin-api",
+ "cycms-plugin-manager",
+ "cycms-publish",
+ "cycms-revision",
+ "cycms-settings",
+ "semver",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "cycms-plugin-wasm"

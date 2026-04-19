@@ -12,7 +12,8 @@ use cycms_media::MediaManager;
 use cycms_migrate::MigrationEngine;
 use cycms_permission::PermissionEngine;
 use cycms_plugin_api::{PluginContext, ServiceRegistry};
-use cycms_plugin_manager::{PluginManager, PluginManagerConfig};
+use cycms_plugin_manager::{PluginManager, PluginManagerConfig, PluginRuntime};
+use cycms_plugin_native::NativePluginRuntime;
 use cycms_publish::PublishManager;
 use cycms_revision::RevisionManager;
 use cycms_settings::SettingsManager;
@@ -47,6 +48,10 @@ pub struct AppContext {
     pub media_manager: Arc<MediaManager>,
     /// 任务 15：插件生命周期管理器，封装 install / enable / disable / uninstall 状态机。
     pub plugin_manager: Arc<PluginManager>,
+    /// 任务 16：Native 插件运行时。
+    /// 宿主代码 / CLI 在 `serve` 前通过 `native_runtime.register_plugin(...)` 交付
+    /// `Arc<dyn Plugin>`，`PluginManager::enable` 时由此 runtime 执行生命周期钩子。
+    pub native_runtime: Arc<NativePluginRuntime>,
 }
 
 /// 应用生命周期管理入口。
@@ -145,13 +150,16 @@ impl Kernel {
             Arc::clone(&service_registry),
         ));
 
-        let cycms_version = Version::parse(env!("CARGO_PKG_VERSION")).map_err(|e| {
-            Error::Internal {
+        let cycms_version =
+            Version::parse(env!("CARGO_PKG_VERSION")).map_err(|e| Error::Internal {
                 message: format!("parse cycms version: {e}"),
                 source: None,
-            }
-        })?;
-        let plugins_root = resolve_plugins_root(self.config_path.as_deref(), &self.config.plugins.directory);
+            })?;
+        let plugins_root =
+            resolve_plugins_root(self.config_path.as_deref(), &self.config.plugins.directory);
+        let native_runtime = Arc::new(NativePluginRuntime::new());
+        let native_as_trait: Arc<dyn PluginRuntime> =
+            Arc::clone(&native_runtime) as Arc<dyn PluginRuntime>;
         let plugin_manager = Arc::new(PluginManager::new(
             Arc::clone(&db),
             Arc::clone(&migration_engine),
@@ -163,8 +171,8 @@ impl Kernel {
             PluginManagerConfig {
                 cycms_version,
                 plugins_root,
-                // 任务 16 / 17 完成后在此处注入 Native / Wasm runtime
-                runtimes: Vec::new(),
+                // Native runtime 已就位（任务 16）；Wasm runtime（任务 17）后续并列追加
+                runtimes: vec![native_as_trait],
             },
         ));
         service_registry.register("system.plugin_manager", Arc::clone(&plugin_manager))?;
@@ -183,6 +191,7 @@ impl Kernel {
             publish_manager,
             media_manager,
             plugin_manager,
+            native_runtime,
         })
     }
 

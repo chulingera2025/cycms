@@ -21,6 +21,7 @@ cycms-publish = { workspace = true }
 cycms-media = { workspace = true }
 cycms-plugin-api = { workspace = true }
 cycms-plugin-manager = { workspace = true }
+cycms-plugin-native = { workspace = true }
 semver = "1"
 tokio = { workspace = true }
 
