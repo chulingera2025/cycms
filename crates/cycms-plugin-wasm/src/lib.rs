@@ -18,6 +18,16 @@
 //!
 //! 安全审计由上层分发渠道（未来的插件市场）负责；本 crate 不做任何约束。
 
+#[allow(
+    clippy::unnecessary_wraps,
+    clippy::future_not_send,
+    clippy::missing_errors_doc,
+    clippy::doc_markdown,
+    clippy::trivially_copy_pass_by_ref,
+    clippy::pedantic,
+    missing_docs
+)]
+mod bindings;
 mod runtime;
 
 pub use runtime::WasmPluginRuntime;

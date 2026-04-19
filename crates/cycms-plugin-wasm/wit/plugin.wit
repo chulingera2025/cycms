@@ -1,0 +1,133 @@
+// cycms 0.1 Wasm 插件 WIT 定义。
+//
+// 组织：本 package 同时定义 10 组 host interface（由 Runtime 实现并绑定到 Linker）与
+// `plugin` world（guest 必须实现 `on-enable` / `on-disable` / `on-event` / `handle-http`）。
+// 所有 host function 采用「JSON 字符串穿透」协议：参数 / 返回值形状贴近 Rust 侧结构体
+// 的 serde_json 默认形式，避免 WIT record 的深层建模，方便后续迭代。
+//
+// 完全信任模型：不做白名单 / 沙箱约束，db 组直接暴露原始 SQL；WASI preview 2 通过
+// wasmtime-wasi 在 Linker 上透传，不在 world 中声明（与本 bindgen 解耦）。
+package cycms:plugin@0.1.0;
+
+/// 日志直连宿主 tracing，字段附带 plugin=<name>
+interface log {
+    info: func(message: string);
+    warn: func(message: string);
+    error: func(message: string);
+}
+
+/// 代理到 SettingsManager，namespace 强制为当前插件名。value-json 为合法 JSON 字符串。
+interface settings {
+    /// 读取当前插件命名空间下的 key。不存在时返回空字符串 "" 而非 err。
+    get: func(key: string) -> result<string, string>;
+    /// 写入当前插件命名空间下的 key。
+    set: func(key: string, value-json: string) -> result<_, string>;
+    /// 删除当前插件命名空间下的 key。不存在视为成功。
+    delete: func(key: string) -> result<_, string>;
+}
+
+/// 插件私有键值存储：v0.1 复用 SettingsManager 存储，namespace 为 `plugin:<name>:kv`，
+/// 值保持字符串不做 JSON 解析。
+interface kv {
+    get: func(key: string) -> result<string, string>;
+    set: func(key: string, value: string) -> result<_, string>;
+    delete: func(key: string) -> result<_, string>;
+}
+
+/// 代理到 PermissionEngine。
+interface permission {
+    /// 检查 user-id 是否拥有 domain.resource-name.action 权限点。
+    check: func(
+        user-id: string,
+        domain: string,
+        resource-name: string,
+        action: string,
+    ) -> result<bool, string>;
+}
+
+/// 代理到 AuthEngine，仅暴露「token → user-id」与「user-id → user JSON」两条读路径。
+interface auth {
+    /// 校验 access token，成功返回 user-id；失败返回错误。
+    verify-access-token: func(token: string) -> result<string, string>;
+    /// 按 user-id 查询用户，返回 JSON 序列化的 User（不含密码哈希）。
+    get-user: func(user-id: string) -> result<string, string>;
+}
+
+/// 代理到 ContentEngine。参数 / 返回均为 JSON 字符串。
+interface content {
+    /// 按 type-api-id + entry-id 读单条，返回 ContentEntry JSON。
+    get: func(type-api-id: string, entry-id: string) -> result<string, string>;
+    /// 按 ContentQuery JSON 筛选 / 分页 / 排序，返回 list<ContentEntry> JSON。
+    find: func(type-api-id: string, query-json: string) -> result<string, string>;
+    /// 创建，payload-json 为 ContentData；返回生成的 ContentEntry JSON。
+    create: func(type-api-id: string, payload-json: string) -> result<string, string>;
+    /// 部分更新，patch-json 为字段子集；返回更新后的 ContentEntry JSON。
+    update: func(
+        type-api-id: string,
+        entry-id: string,
+        patch-json: string,
+    ) -> result<string, string>;
+    /// 按 ContentConfig 软删 / 硬删配置删除。
+    delete: func(type-api-id: string, entry-id: string) -> result<_, string>;
+}
+
+/// 事件发布 / 订阅。
+interface event {
+    /// 发布事件到宿主 EventBus。kind 为 EventKind 字符串表达（如 "user.created"）。
+    publish: func(kind: string, payload-json: string) -> result<_, string>;
+    /// 声明 guest 关心的事件类型；匹配事件由宿主转发到 on-event。多次 subscribe 同
+    /// 一 kind 幂等。
+    subscribe: func(kind: string) -> result<_, string>;
+}
+
+/// 路由登记。guest 在 on-enable 内声明；Runtime 合成 axum Router，命中时回调
+/// guest 的 handle-http。
+interface route {
+    /// 注册 (path, method) 到主路由表。method 需大写（"GET" / "POST" / ...）。
+    register: func(path: string, method: string) -> result<_, string>;
+}
+
+/// 无白名单的出站 HTTP 客户端。
+/// request / response 均为 JSON 字符串：
+///   request : { method, url, headers: [[k,v]], body-base64 }
+///   response: { status: u16, headers: [[k,v]], body-base64 }
+interface http {
+    fetch: func(request-json: string) -> result<string, string>;
+}
+
+/// 原始 SQL 入口。完全信任模型下直接作用于当前 DatabasePool，不做只读约束。
+/// params-json 为 list<JsonValue>；query 返回 list<row-object> 的 JSON。
+interface db {
+    query: func(sql: string, params-json: string) -> result<string, string>;
+    execute: func(sql: string, params-json: string) -> result<u64, string>;
+}
+
+/// cycms Wasm 插件的顶层 world。
+///
+/// Imports：上方 10 组 cycms 扩展 host function（完全访问语义）。
+/// 未列入的 wasi:* 接口由 wasmtime-wasi 在 linker 上透传，不在 world 中显式声明，
+/// 这样 bindgen 只为本 crate 的 10 个 host 接口生成 Host trait，与 WASI 透传解耦。
+///
+/// Exports：guest 必须实现的生命周期 / 事件 / HTTP 代理入口，全 JSON 字符串穿透。
+world plugin {
+    import log;
+    import settings;
+    import kv;
+    import permission;
+    import auth;
+    import content;
+    import event;
+    import route;
+    import http;
+    import db;
+
+    /// 插件启用时调用。失败回滚为未启用。
+    export on-enable: func() -> result<_, string>;
+    /// 插件禁用时调用。错误仅记录，不阻断卸载链路。
+    export on-disable: func() -> result<_, string>;
+    /// 事件回调。kind 为 EventKind 字符串，payload-json 为事件负载 JSON。
+    export on-event: func(kind: string, payload-json: string) -> result<_, string>;
+    /// 命中 `route.register` 注册过的 (path, method) 时调用。
+    /// request-json 形状见 `interface http`；guest 返回 JSON 化 HttpResponse。
+    export handle-http: func(request-json: string) -> result<string, string>;
+}
