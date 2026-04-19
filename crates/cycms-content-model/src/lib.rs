@@ -15,6 +15,7 @@ mod error;
 mod field_type;
 mod model;
 mod repository;
+mod schema;
 mod validation;
 
 pub use error::{ContentModelError, FieldViolation};
@@ -27,4 +28,5 @@ pub use repository::{
     ContentTypeRepository, NewContentTypeRow, UpdateContentTypeRow, new_content_type_id,
     normalize_api_id, normalize_name, validate_api_id,
 };
+pub use schema::{field_to_schema, to_json_schema};
 pub use validation::{validate_field, validate_field_definitions, validate_fields};
