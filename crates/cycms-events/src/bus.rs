@@ -64,8 +64,7 @@ impl EventBus {
     }
 
     /// 取或建对应 `kind` 的 broadcast sender，并返回新 receiver。
-    /// 供 7.4 `subscribe` 内部使用（由 handler 模块消费）。
-    #[allow(dead_code)] // 7.4 handler 模块接入后成为活跃 API
+    /// 由 `handler` 模块的 [`EventBus::subscribe`] 内部使用。
     pub(crate) fn subscribe_channel(&self, kind: EventKind) -> broadcast::Receiver<Arc<Event>> {
         let capacity = self.capacity;
         let mut guard = self

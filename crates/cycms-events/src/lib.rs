@@ -11,7 +11,9 @@
 mod bus;
 mod error;
 mod event;
+mod handler;
 
 pub use bus::{EventBus, DEFAULT_CHANNEL_CAPACITY};
 pub use error::EventError;
 pub use event::{Event, EventKind};
+pub use handler::{EventHandler, SubscriptionHandle, SubscriptionId};
