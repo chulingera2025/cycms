@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use cycms_auth::AuthEngine;
+use cycms_content_engine::ContentEngine;
 use cycms_content_model::ContentModelRegistry;
 use cycms_db::DatabasePool;
 use cycms_events::EventBus;
@@ -11,10 +12,9 @@ use crate::registry::ServiceRegistry;
 
 /// 插件执行时由宿主注入的只读能力集合。
 ///
-/// v0.1 仅包含已实现的核心子系统；content-engine / plugin-manager 等后续任务的字段
-/// 留作扩展位，以下 TODO 标注对应任务编号以防被误删或提前实现：
+/// v0.1 仅包含已实现的核心子系统；后续任务的字段留作扩展位，以下 TODO 标注对应
+/// 任务编号以防被误删或提前实现：
 ///
-/// - TODO!!!: 任务 11 增加 `content_engine: Arc<ContentEngine>`
 /// - TODO!!!: 任务 15 增加 `plugin_manager: Arc<PluginManager>`（仅管理能力暴露子集）
 ///
 /// 该结构体应按引用 (`&PluginContext`) 传给插件生命周期钩子与请求处理路径，
@@ -33,6 +33,8 @@ pub struct PluginContext {
     pub settings_manager: Arc<SettingsManager>,
     /// 内容类型注册表：插件可读取现有类型、注册自定义字段类型（Req 3.6）。
     pub content_model: Arc<ContentModelRegistry>,
+    /// 内容实例引擎：插件可执行 CRUD / 查询 / 删除（任务 11）。
+    pub content_engine: Arc<ContentEngine>,
     /// 插件间服务发现与调用。
     pub service_registry: Arc<ServiceRegistry>,
 }
@@ -40,6 +42,7 @@ pub struct PluginContext {
 impl PluginContext {
     /// 组合现有核心子系统构造 `PluginContext`。
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db_pool: Arc<DatabasePool>,
         auth_engine: Arc<AuthEngine>,
@@ -47,6 +50,7 @@ impl PluginContext {
         event_bus: Arc<EventBus>,
         settings_manager: Arc<SettingsManager>,
         content_model: Arc<ContentModelRegistry>,
+        content_engine: Arc<ContentEngine>,
         service_registry: Arc<ServiceRegistry>,
     ) -> Self {
         Self {
@@ -56,6 +60,7 @@ impl PluginContext {
             event_bus,
             settings_manager,
             content_model,
+            content_engine,
             service_registry,
         }
     }

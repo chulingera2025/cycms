@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use cycms_auth::AuthEngine;
 use cycms_config::DatabaseDriver;
+use cycms_content_engine::{ContentEngine, ContentQuery};
 use cycms_content_model::{ContentModelRegistry, ContentTypeKind};
 use cycms_db::DatabasePool;
 use cycms_events::{DEFAULT_CHANNEL_CAPACITY, Event, EventBus, EventKind};
@@ -85,6 +86,7 @@ idle_timeout_secs = 60
         keys,
         vec![
             "system.auth",
+            "system.content_engine",
             "system.content_model",
             "system.db",
             "system.events",
@@ -110,12 +112,24 @@ idle_timeout_secs = 60
     ctx.service_registry
         .get::<ContentModelRegistry>("system.content_model")
         .unwrap();
+    ctx.service_registry
+        .get::<ContentEngine>("system.content_engine")
+        .unwrap();
 
     // ContentModel 已挂入上下文并完成默认种子：page (Single) + post (Collection)
     let page = ctx.content_model.get_type("page").await.unwrap().unwrap();
     assert_eq!(page.kind, ContentTypeKind::Single);
     let post = ctx.content_model.get_type("post").await.unwrap().unwrap();
     assert_eq!(post.kind, ContentTypeKind::Collection);
+
+    // ContentEngine 已挂入上下文：可对 seeded 类型执行空 list 查询
+    let res = ctx
+        .content_engine
+        .list("post", &ContentQuery::default())
+        .await
+        .unwrap();
+    assert_eq!(res.meta.total, 0);
+    assert!(res.data.is_empty());
 }
 
 #[tokio::test]

@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use cycms_auth::AuthEngine;
 use cycms_config::AppConfig;
+use cycms_content_engine::ContentEngine;
 use cycms_content_model::{ContentModelRegistry, FieldTypeRegistry, seed_default_types};
 use cycms_core::Result;
 use cycms_db::DatabasePool;
@@ -33,6 +34,8 @@ pub struct AppContext {
     pub service_registry: Arc<ServiceRegistry>,
     /// 任务 10：内容类型管理与字段校验 / Schema 输出门面。
     pub content_model: Arc<ContentModelRegistry>,
+    /// 任务 11：内容实例 CRUD + 查询引擎 + `EventBus` 集成门面。
+    pub content_engine: Arc<ContentEngine>,
     /// 占位：任务 15 替换为 `Arc<PluginManager>`
     pub plugin_manager: Arc<PlaceholderService>,
 }
@@ -94,6 +97,12 @@ impl Kernel {
             seed_default_types(&content_model).await?;
         }
         let service_registry = Arc::new(ServiceRegistry::new());
+        let content_engine = Arc::new(ContentEngine::new(
+            Arc::clone(&db),
+            Arc::clone(&content_model),
+            Arc::clone(&event_bus),
+            self.config.content.clone(),
+        ));
         register_core_services(
             &service_registry,
             &db,
@@ -102,6 +111,7 @@ impl Kernel {
             &event_bus,
             &settings_manager,
             &content_model,
+            &content_engine,
         )?;
 
         Ok(AppContext {
@@ -113,6 +123,7 @@ impl Kernel {
             settings_manager,
             service_registry,
             content_model,
+            content_engine,
             plugin_manager: Arc::new(PlaceholderService),
         })
     }
@@ -142,6 +153,7 @@ impl Kernel {
 /// `{plugin_name}.{service_name}` 约定查询（对齐 Req 13.1）。
 ///
 /// 核心子系统统一使用 `system` 作为 plugin 段，service 段沿用子系统约定名。
+#[allow(clippy::too_many_arguments)]
 fn register_core_services(
     registry: &ServiceRegistry,
     db: &Arc<DatabasePool>,
@@ -150,6 +162,7 @@ fn register_core_services(
     event_bus: &Arc<EventBus>,
     settings_manager: &Arc<SettingsManager>,
     content_model: &Arc<ContentModelRegistry>,
+    content_engine: &Arc<ContentEngine>,
 ) -> Result<()> {
     registry.register("system.db", Arc::clone(db))?;
     registry.register("system.auth", Arc::clone(auth_engine))?;
@@ -157,5 +170,6 @@ fn register_core_services(
     registry.register("system.events", Arc::clone(event_bus))?;
     registry.register("system.settings", Arc::clone(settings_manager))?;
     registry.register("system.content_model", Arc::clone(content_model))?;
+    registry.register("system.content_engine", Arc::clone(content_engine))?;
     Ok(())
 }
