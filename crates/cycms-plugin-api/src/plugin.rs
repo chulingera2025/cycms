@@ -1,0 +1,54 @@
+use std::any::Any;
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use axum::Router;
+use cycms_core::Result;
+use cycms_events::EventHandler;
+
+use crate::context::PluginContext;
+
+/// Native 插件必须实现的 trait（Req 11.1 / 11.2 / 11.3 / 11.4）。
+///
+/// 只在 `cycms-plugin-api` 定义 trait 本身与宿主可感知的返回值形状；具体加载、调度、
+/// Router 合并、服务批量注册由任务 16 的 `NativePluginRuntime` 完成。
+///
+/// 所有 handler 都以 `&self` 接收，要求实现方是内部可变/共享状态安全的。
+#[async_trait]
+pub trait Plugin: Send + Sync {
+    /// 插件唯一标识（同时作为 `ServiceRegistry` 键的 plugin 段）。
+    fn name(&self) -> &str;
+
+    /// 插件版本，遵循 SemVer（任务 15 的依赖解析以此为输入）。
+    fn version(&self) -> &str;
+
+    /// 插件启用时的一次性初始化入口。
+    ///
+    /// # Errors
+    /// 启用失败时返回错误，`PluginManager` 会记录并跳过该插件。
+    async fn on_enable(&self, ctx: &PluginContext) -> Result<()>;
+
+    /// 插件禁用时的清理入口。
+    ///
+    /// # Errors
+    /// 清理失败时返回错误，`PluginManager` 记录但继续卸载流程。
+    async fn on_disable(&self, ctx: &PluginContext) -> Result<()>;
+
+    /// 插件贡献的 axum 路由（挂载到 `/api/v1/x/{plugin_name}/*`，任务 16.3 实现合并）。
+    fn routes(&self) -> Option<Router> {
+        None
+    }
+
+    /// 插件提供的事件处理器清单，`NativePluginRuntime` 会转交给 `EventBus`。
+    fn event_handlers(&self) -> Vec<Arc<dyn EventHandler>> {
+        Vec::new()
+    }
+
+    /// 插件对外暴露的服务列表：`(service_name, Arc<impl Send+Sync+'static>)`。
+    ///
+    /// Runtime 会按 `{plugin_name}.{service_name}` 组装完整 key 后写入 `ServiceRegistry`
+    /// （对齐 Req 13.1）。`service_name` 由实现方自行约定，不得包含 `.`。
+    fn services(&self) -> Vec<(String, Arc<dyn Any + Send + Sync>)> {
+        Vec::new()
+    }
+}
