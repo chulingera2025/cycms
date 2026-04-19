@@ -65,17 +65,28 @@ impl EventBus {
         let id = Uuid::new_v4();
         let mut rx = self.subscribe_channel(kind.clone());
         let handler_name = handler.name().to_owned();
+        let handler_timeout = self.handler_timeout();
 
         let task = tokio::spawn(async move {
             loop {
                 match rx.recv().await {
                     Ok(event) => {
-                        if let Err(err) = handler.handle(event).await {
-                            warn!(
-                                handler = %handler_name,
-                                error = %err,
-                                "event handler returned error"
-                            );
+                        match tokio::time::timeout(handler_timeout, handler.handle(event)).await {
+                            Ok(Ok(())) => {}
+                            Ok(Err(err)) => {
+                                warn!(
+                                    handler = %handler_name,
+                                    error = %err,
+                                    "event handler returned error"
+                                );
+                            }
+                            Err(_elapsed) => {
+                                warn!(
+                                    handler = %handler_name,
+                                    timeout_ms = %handler_timeout.as_millis(),
+                                    "event handler timed out"
+                                );
+                            }
                         }
                     }
                     Err(RecvError::Closed) => break,
@@ -105,7 +116,7 @@ impl EventBus {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::time::Duration;
 
     use super::{EventHandler, SubscriptionHandle};
@@ -131,8 +142,50 @@ mod tests {
         }
     }
 
+    struct AlwaysErr {
+        name: String,
+        count: Arc<AtomicU64>,
+    }
+
+    #[async_trait]
+    impl EventHandler for AlwaysErr {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        async fn handle(&self, _event: Arc<Event>) -> cycms_core::Result<()> {
+            self.count.fetch_add(1, Ordering::SeqCst);
+            Err(cycms_core::Error::Internal {
+                message: "boom".to_owned(),
+                source: None,
+            })
+        }
+    }
+
+    /// 第一次 handle 会睡眠 300ms（必超过 50ms 超时），之后所有调用直接计数返回。
+    struct SlowOnFirst {
+        name: String,
+        first: AtomicBool,
+        count: Arc<AtomicU64>,
+    }
+
+    #[async_trait]
+    impl EventHandler for SlowOnFirst {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        async fn handle(&self, _event: Arc<Event>) -> cycms_core::Result<()> {
+            if self.first.swap(false, Ordering::SeqCst) {
+                tokio::time::sleep(Duration::from_millis(300)).await;
+            }
+            self.count.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
     async fn wait_for(counter: &Arc<AtomicU64>, target: u64) {
-        for _ in 0..50 {
+        for _ in 0..100 {
             if counter.load(Ordering::SeqCst) >= target {
                 return;
             }
@@ -183,5 +236,43 @@ mod tests {
             1,
             "unsubscribed handler must not be called again"
         );
+    }
+
+    #[tokio::test]
+    async fn handler_error_keeps_task_alive() {
+        let bus = EventBus::new();
+        let count = Arc::new(AtomicU64::new(0));
+        let handler = Arc::new(AlwaysErr {
+            name: "err".to_owned(),
+            count: Arc::clone(&count),
+        });
+
+        let _h = bus.subscribe(EventKind::ContentDeleted, handler);
+        for _ in 0..3 {
+            bus.publish(Event::new(EventKind::ContentDeleted));
+        }
+        wait_for(&count, 3).await;
+    }
+
+    #[tokio::test]
+    async fn handler_timeout_does_not_kill_task() {
+        let bus = EventBus::with_config(32, Duration::from_millis(50));
+        let count = Arc::new(AtomicU64::new(0));
+        let handler = Arc::new(SlowOnFirst {
+            name: "slow".to_owned(),
+            first: AtomicBool::new(true),
+            count: Arc::clone(&count),
+        });
+
+        let _h = bus.subscribe(EventKind::ContentUpdated, handler);
+
+        // 第一条事件：handler sleep 300ms 被 50ms 超时掉，counter 不增
+        bus.publish(Event::new(EventKind::ContentUpdated));
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        assert_eq!(count.load(Ordering::SeqCst), 0);
+
+        // 第二条事件：task 应已脱离第一条的超时，立即处理并计数
+        bus.publish(Event::new(EventKind::ContentUpdated));
+        wait_for(&count, 1).await;
     }
 }

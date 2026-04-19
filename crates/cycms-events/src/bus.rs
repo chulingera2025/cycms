@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, PoisonError, RwLock};
+use std::time::Duration;
 
 use tokio::sync::broadcast;
 
@@ -8,6 +9,10 @@ use crate::event::{Event, EventKind};
 /// 单桶 broadcast channel 默认容量。最慢订阅者超出容量时会收到 `Lagged(n)` 并
 /// 丢弃最旧消息。v0.1 写死 256，v0.2 接入 `SettingsConfig`。
 pub const DEFAULT_CHANNEL_CAPACITY: usize = 256;
+
+/// handler 单次 `handle()` 调用的默认超时。超时后 handler future 会被 drop，后台
+/// task 立即处理下一个事件（对齐 Requirements 9.2 的「不阻断」语义）。
+pub const DEFAULT_HANDLER_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// 进程内异步事件总线。
 ///
@@ -18,19 +23,27 @@ pub const DEFAULT_CHANNEL_CAPACITY: usize = 256;
 pub struct EventBus {
     channels: RwLock<HashMap<EventKind, broadcast::Sender<Arc<Event>>>>,
     capacity: usize,
+    handler_timeout: Duration,
 }
 
 impl EventBus {
     #[must_use]
     pub fn new() -> Self {
-        Self::with_capacity(DEFAULT_CHANNEL_CAPACITY)
+        Self::with_config(DEFAULT_CHANNEL_CAPACITY, DEFAULT_HANDLER_TIMEOUT)
     }
 
     #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
+        Self::with_config(capacity, DEFAULT_HANDLER_TIMEOUT)
+    }
+
+    /// 构造自定义容量 + handler 超时的 `EventBus`。
+    #[must_use]
+    pub fn with_config(capacity: usize, handler_timeout: Duration) -> Self {
         Self {
             channels: RwLock::new(HashMap::new()),
             capacity,
+            handler_timeout,
         }
     }
 
@@ -63,6 +76,12 @@ impl EventBus {
         self.capacity
     }
 
+    /// 获取 handler 单次调用超时。
+    #[must_use]
+    pub fn handler_timeout(&self) -> Duration {
+        self.handler_timeout
+    }
+
     /// 取或建对应 `kind` 的 broadcast sender，并返回新 receiver。
     /// 由 `handler` 模块的 [`EventBus::subscribe`] 内部使用。
     pub(crate) fn subscribe_channel(&self, kind: EventKind) -> broadcast::Receiver<Arc<Event>> {
@@ -86,19 +105,27 @@ impl Default for EventBus {
 
 #[cfg(test)]
 mod tests {
-    use super::{EventBus, DEFAULT_CHANNEL_CAPACITY};
+    use super::{EventBus, DEFAULT_CHANNEL_CAPACITY, DEFAULT_HANDLER_TIMEOUT};
     use crate::event::{Event, EventKind};
 
     #[test]
-    fn new_uses_default_capacity() {
+    fn new_uses_default_capacity_and_timeout() {
         let bus = EventBus::new();
         assert_eq!(bus.capacity(), DEFAULT_CHANNEL_CAPACITY);
+        assert_eq!(bus.handler_timeout(), DEFAULT_HANDLER_TIMEOUT);
     }
 
     #[test]
     fn with_capacity_overrides_default() {
         let bus = EventBus::with_capacity(8);
         assert_eq!(bus.capacity(), 8);
+    }
+
+    #[test]
+    fn with_config_overrides_both() {
+        let bus = EventBus::with_config(16, std::time::Duration::from_millis(100));
+        assert_eq!(bus.capacity(), 16);
+        assert_eq!(bus.handler_timeout(), std::time::Duration::from_millis(100));
     }
 
     #[test]
