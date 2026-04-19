@@ -8,9 +8,10 @@ use cycms_db::DatabasePool;
 use cycms_events::EventBus;
 use cycms_migrate::MigrationEngine;
 use cycms_permission::PermissionEngine;
+use cycms_plugin_api::ServiceRegistry;
 use cycms_settings::SettingsManager;
 
-// TODO!!!: 任务 9+ 余下占位字段逐步替换为真实子系统类型（ServiceRegistry、PluginManager、ContentModelRegistry）
+// TODO!!!: 任务 10/15 余下占位字段逐步替换为真实子系统类型（PluginManager、ContentModelRegistry）
 
 /// 全局应用上下文，Kernel bootstrap 后在所有组件间共享。
 #[non_exhaustive]
@@ -27,8 +28,8 @@ pub struct AppContext {
     pub event_bus: Arc<EventBus>,
     /// 任务 8:系统与插件设置的统一访问门面。
     pub settings_manager: Arc<SettingsManager>,
-    /// 占位：任务 9 替换为 `Arc<ServiceRegistry>`
-    pub service_registry: Arc<PlaceholderService>,
+    /// 任务 9：插件间服务发现与调用门面。
+    pub service_registry: Arc<ServiceRegistry>,
     /// 占位：任务 15 替换为 `Arc<PluginManager>`
     pub plugin_manager: Arc<PlaceholderService>,
     /// 占位：任务 10 替换为 `Arc<ContentModelRegistry>`
@@ -82,6 +83,15 @@ impl Kernel {
         let permission_engine = Arc::new(PermissionEngine::new(Arc::clone(&db)));
         let event_bus = Arc::new(EventBus::new());
         let settings_manager = Arc::new(SettingsManager::new(Arc::clone(&db)));
+        let service_registry = Arc::new(ServiceRegistry::new());
+        register_core_services(
+            &service_registry,
+            &db,
+            &auth_engine,
+            &permission_engine,
+            &event_bus,
+            &settings_manager,
+        )?;
 
         Ok(AppContext {
             config: Arc::new(self.config.clone()),
@@ -90,7 +100,7 @@ impl Kernel {
             permission_engine,
             event_bus,
             settings_manager,
-            service_registry: Arc::new(PlaceholderService),
+            service_registry,
             plugin_manager: Arc::new(PlaceholderService),
             content_model_registry: Arc::new(PlaceholderService),
         })
@@ -115,4 +125,24 @@ impl Kernel {
         // TODO!!!: 任务 18 实现优雅关闭逻辑
         todo!("TODO!!!: 任务 18 实现优雅关闭")
     }
+}
+
+/// 启动期把核心子系统注册到 `ServiceRegistry`，供插件通过
+/// `{plugin_name}.{service_name}` 约定查询（对齐 Req 13.1）。
+///
+/// 核心子系统统一使用 `system` 作为 plugin 段，service 段沿用子系统约定名。
+fn register_core_services(
+    registry: &ServiceRegistry,
+    db: &Arc<DatabasePool>,
+    auth_engine: &Arc<AuthEngine>,
+    permission_engine: &Arc<PermissionEngine>,
+    event_bus: &Arc<EventBus>,
+    settings_manager: &Arc<SettingsManager>,
+) -> Result<()> {
+    registry.register("system.db", Arc::clone(db))?;
+    registry.register("system.auth", Arc::clone(auth_engine))?;
+    registry.register("system.permission", Arc::clone(permission_engine))?;
+    registry.register("system.events", Arc::clone(event_bus))?;
+    registry.register("system.settings", Arc::clone(settings_manager))?;
+    Ok(())
 }

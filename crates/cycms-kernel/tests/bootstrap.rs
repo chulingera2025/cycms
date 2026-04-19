@@ -1,10 +1,13 @@
 use std::fs;
 use std::path::PathBuf;
 
+use cycms_auth::AuthEngine;
 use cycms_config::DatabaseDriver;
 use cycms_db::DatabasePool;
-use cycms_events::{DEFAULT_CHANNEL_CAPACITY, Event, EventKind};
+use cycms_events::{DEFAULT_CHANNEL_CAPACITY, Event, EventBus, EventKind};
 use cycms_kernel::Kernel;
+use cycms_permission::PermissionEngine;
+use cycms_settings::SettingsManager;
 use serde_json::json;
 use tempfile::tempdir;
 
@@ -74,6 +77,34 @@ idle_timeout_secs = 60
         ctx.settings_manager.get("system", "locale").await.unwrap(),
         Some(json!("en_US"))
     );
+
+    // ServiceRegistry 已挂入上下文：核心服务批量注册且可按 typed key 查询
+    let keys = ctx.service_registry.list_by_prefix("system");
+    assert_eq!(
+        keys,
+        vec![
+            "system.auth",
+            "system.db",
+            "system.events",
+            "system.permission",
+            "system.settings",
+        ]
+    );
+    ctx.service_registry
+        .get::<AuthEngine>("system.auth")
+        .unwrap();
+    ctx.service_registry
+        .get::<PermissionEngine>("system.permission")
+        .unwrap();
+    ctx.service_registry
+        .get::<EventBus>("system.events")
+        .unwrap();
+    ctx.service_registry
+        .get::<SettingsManager>("system.settings")
+        .unwrap();
+    ctx.service_registry
+        .get::<DatabasePool>("system.db")
+        .unwrap();
 }
 
 #[tokio::test]
