@@ -18,7 +18,7 @@ use sqlx::types::Json;
 use uuid::Uuid;
 
 use crate::error::SettingsError;
-use crate::model::SettingEntry;
+use crate::model::{PluginSchema, SettingEntry};
 
 /// `settings` 表的三方言 CRUD。
 ///
@@ -215,9 +215,11 @@ impl SettingsRepository {
     }
 }
 
-/// `plugin_settings_schemas` 表的 CRUD 占位；C5 填充 upsert / find / delete。
+/// `plugin_settings_schemas` 表的三方言 CRUD。
+///
+/// 使用 `ON CONFLICT (plugin_name) DO UPDATE` 语义：重复注册同一个插件会覆盖
+/// `schema` 字段，`created_at` 保留首次注册时间，便于追踪插件 schema 首次出现时点。
 pub struct PluginSchemaRepository {
-    #[allow(dead_code)]
     db: Arc<DatabasePool>,
 }
 
@@ -225,6 +227,165 @@ impl PluginSchemaRepository {
     #[must_use]
     pub fn new(db: Arc<DatabasePool>) -> Self {
         Self { db }
+    }
+
+    /// 注册或覆盖插件 schema，返回写入后的实体。
+    ///
+    /// # Errors
+    /// - `plugin_name` 归一后为空 → [`cycms_core::Error::ValidationError`]
+    /// - DB 故障 / JSON 解码失败 → [`cycms_core::Error::Internal`]
+    pub async fn upsert(&self, plugin_name: &str, schema: Value) -> Result<PluginSchema> {
+        let name = normalize_plugin_name(plugin_name)?;
+
+        match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(PG_SCHEMA_UPSERT)
+                    .bind(&name)
+                    .bind(Json(schema))
+                    .execute(pool)
+                    .await
+                    .map_err(SettingsError::Database)?;
+            }
+            DatabasePool::MySql(pool) => {
+                sqlx::query(MYSQL_SCHEMA_UPSERT)
+                    .bind(&name)
+                    .bind(Json(schema))
+                    .execute(pool)
+                    .await
+                    .map_err(SettingsError::Database)?;
+            }
+            DatabasePool::Sqlite(pool) => {
+                sqlx::query(SQLITE_SCHEMA_UPSERT)
+                    .bind(&name)
+                    .bind(Json(schema))
+                    .execute(pool)
+                    .await
+                    .map_err(SettingsError::Database)?;
+            }
+        }
+
+        self.find(&name)
+            .await?
+            .ok_or_else(|| cycms_core::Error::Internal {
+                message: "upserted plugin schema not found on read-back".to_owned(),
+                source: None,
+            })
+    }
+
+    /// 查找插件 schema。
+    ///
+    /// # Errors
+    /// - `plugin_name` 归一后为空 → [`cycms_core::Error::ValidationError`]
+    /// - DB 故障 / JSON 解码失败 → [`cycms_core::Error::Internal`]
+    pub async fn find(&self, plugin_name: &str) -> Result<Option<PluginSchema>> {
+        let name = normalize_plugin_name(plugin_name)?;
+        match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(PG_SCHEMA_SELECT)
+                    .bind(&name)
+                    .fetch_optional(pool)
+                    .await
+                    .map_err(SettingsError::Database)?;
+                row.map(|r| pg_row_to_schema(&r))
+                    .transpose()
+                    .map_err(Into::into)
+            }
+            DatabasePool::MySql(pool) => {
+                let row = sqlx::query(MYSQL_SCHEMA_SELECT)
+                    .bind(&name)
+                    .fetch_optional(pool)
+                    .await
+                    .map_err(SettingsError::Database)?;
+                row.map(|r| mysql_row_to_schema(&r))
+                    .transpose()
+                    .map_err(Into::into)
+            }
+            DatabasePool::Sqlite(pool) => {
+                let row = sqlx::query(SQLITE_SCHEMA_SELECT)
+                    .bind(&name)
+                    .fetch_optional(pool)
+                    .await
+                    .map_err(SettingsError::Database)?;
+                row.map(|r| sqlite_row_to_schema(&r))
+                    .transpose()
+                    .map_err(Into::into)
+            }
+        }
+    }
+
+    /// 列出所有插件 schema，按 `plugin_name` 升序。
+    ///
+    /// # Errors
+    /// DB 故障 / JSON 解码失败 → [`cycms_core::Error::Internal`]。
+    pub async fn list(&self) -> Result<Vec<PluginSchema>> {
+        match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(PG_SCHEMA_SELECT_ALL)
+                    .fetch_all(pool)
+                    .await
+                    .map_err(SettingsError::Database)?;
+                rows.iter()
+                    .map(pg_row_to_schema)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+            DatabasePool::MySql(pool) => {
+                let rows = sqlx::query(MYSQL_SCHEMA_SELECT_ALL)
+                    .fetch_all(pool)
+                    .await
+                    .map_err(SettingsError::Database)?;
+                rows.iter()
+                    .map(mysql_row_to_schema)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+            DatabasePool::Sqlite(pool) => {
+                let rows = sqlx::query(SQLITE_SCHEMA_SELECT_ALL)
+                    .fetch_all(pool)
+                    .await
+                    .map_err(SettingsError::Database)?;
+                rows.iter()
+                    .map(sqlite_row_to_schema)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+        }
+    }
+
+    /// 删除插件 schema，返回是否有行被实际清除。
+    ///
+    /// # Errors
+    /// - `plugin_name` 归一后为空 → [`cycms_core::Error::ValidationError`]
+    /// - DB 故障 → [`cycms_core::Error::Internal`]
+    pub async fn delete(&self, plugin_name: &str) -> Result<bool> {
+        let name = normalize_plugin_name(plugin_name)?;
+        let affected = match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query("DELETE FROM plugin_settings_schemas WHERE plugin_name = $1")
+                    .bind(&name)
+                    .execute(pool)
+                    .await
+                    .map_err(SettingsError::Database)?
+                    .rows_affected()
+            }
+            DatabasePool::MySql(pool) => {
+                sqlx::query("DELETE FROM plugin_settings_schemas WHERE plugin_name = ?")
+                    .bind(&name)
+                    .execute(pool)
+                    .await
+                    .map_err(SettingsError::Database)?
+                    .rows_affected()
+            }
+            DatabasePool::Sqlite(pool) => {
+                sqlx::query("DELETE FROM plugin_settings_schemas WHERE plugin_name = ?")
+                    .bind(&name)
+                    .execute(pool)
+                    .await
+                    .map_err(SettingsError::Database)?
+                    .rows_affected()
+            }
+        };
+        Ok(affected > 0)
     }
 }
 
@@ -246,6 +407,16 @@ fn normalize_key(key: &str) -> Result<String> {
     let trimmed = key.trim();
     if trimmed.is_empty() {
         return Err(SettingsError::InputValidation("key must not be empty".to_owned()).into());
+    }
+    Ok(trimmed.to_owned())
+}
+
+fn normalize_plugin_name(plugin_name: &str) -> Result<String> {
+    let trimmed = plugin_name.trim();
+    if trimmed.is_empty() {
+        return Err(
+            SettingsError::InputValidation("plugin_name must not be empty".to_owned()).into(),
+        );
     }
     Ok(trimmed.to_owned())
 }
@@ -278,6 +449,30 @@ const SQLITE_UPSERT: &str = "INSERT INTO settings (id, namespace, key, value) \
        SET value = excluded.value, \
            updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')";
 
+const PG_SCHEMA_SELECT: &str = "SELECT plugin_name, schema, created_at \
+     FROM plugin_settings_schemas WHERE plugin_name = $1";
+const PG_SCHEMA_SELECT_ALL: &str = "SELECT plugin_name, schema, created_at \
+     FROM plugin_settings_schemas ORDER BY plugin_name";
+const PG_SCHEMA_UPSERT: &str = "INSERT INTO plugin_settings_schemas (plugin_name, schema) \
+     VALUES ($1, $2) \
+     ON CONFLICT (plugin_name) DO UPDATE SET schema = EXCLUDED.schema";
+
+const MYSQL_SCHEMA_SELECT: &str = "SELECT plugin_name, `schema` AS `schema`, created_at \
+     FROM plugin_settings_schemas WHERE plugin_name = ?";
+const MYSQL_SCHEMA_SELECT_ALL: &str = "SELECT plugin_name, `schema` AS `schema`, created_at \
+     FROM plugin_settings_schemas ORDER BY plugin_name";
+const MYSQL_SCHEMA_UPSERT: &str = "INSERT INTO plugin_settings_schemas (plugin_name, `schema`) \
+     VALUES (?, ?) \
+     ON DUPLICATE KEY UPDATE `schema` = VALUES(`schema`)";
+
+const SQLITE_SCHEMA_SELECT: &str = "SELECT plugin_name, schema, created_at \
+     FROM plugin_settings_schemas WHERE plugin_name = ?";
+const SQLITE_SCHEMA_SELECT_ALL: &str = "SELECT plugin_name, schema, created_at \
+     FROM plugin_settings_schemas ORDER BY plugin_name";
+const SQLITE_SCHEMA_UPSERT: &str = "INSERT INTO plugin_settings_schemas (plugin_name, schema) \
+     VALUES (?, ?) \
+     ON CONFLICT (plugin_name) DO UPDATE SET schema = excluded.schema";
+
 fn pg_row_to_entry(row: &PgRow) -> std::result::Result<SettingEntry, SettingsError> {
     let value: Json<Value> = row.try_get("value").map_err(SettingsError::Database)?;
     Ok(SettingEntry {
@@ -309,6 +504,40 @@ fn sqlite_row_to_entry(row: &SqliteRow) -> std::result::Result<SettingEntry, Set
         key: row.try_get("key").map_err(SettingsError::Database)?,
         value: value.0,
         updated_at: row.try_get("updated_at").map_err(SettingsError::Database)?,
+    })
+}
+
+fn pg_row_to_schema(row: &PgRow) -> std::result::Result<PluginSchema, SettingsError> {
+    let schema: Json<Value> = row.try_get("schema").map_err(SettingsError::Database)?;
+    Ok(PluginSchema {
+        plugin_name: row
+            .try_get("plugin_name")
+            .map_err(SettingsError::Database)?,
+        schema: schema.0,
+        created_at: row.try_get("created_at").map_err(SettingsError::Database)?,
+    })
+}
+
+fn mysql_row_to_schema(row: &MySqlRow) -> std::result::Result<PluginSchema, SettingsError> {
+    let schema: Json<Value> = row.try_get("schema").map_err(SettingsError::Database)?;
+    let created_at: NaiveDateTime = row.try_get("created_at").map_err(SettingsError::Database)?;
+    Ok(PluginSchema {
+        plugin_name: row
+            .try_get("plugin_name")
+            .map_err(SettingsError::Database)?,
+        schema: schema.0,
+        created_at: created_at.and_utc(),
+    })
+}
+
+fn sqlite_row_to_schema(row: &SqliteRow) -> std::result::Result<PluginSchema, SettingsError> {
+    let schema: Json<Value> = row.try_get("schema").map_err(SettingsError::Database)?;
+    Ok(PluginSchema {
+        plugin_name: row
+            .try_get("plugin_name")
+            .map_err(SettingsError::Database)?,
+        schema: schema.0,
+        created_at: row.try_get("created_at").map_err(SettingsError::Database)?,
     })
 }
 

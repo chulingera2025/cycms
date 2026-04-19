@@ -7,8 +7,9 @@ use cycms_core::Result;
 use cycms_db::DatabasePool;
 use serde_json::Value;
 
-use crate::model::SettingEntry;
+use crate::model::{PluginSchema, SettingEntry};
 use crate::repository::{PluginSchemaRepository, SettingsRepository};
+use crate::schema::validate_schema_shape;
 
 /// 系统与插件设置的统一访问门面。
 ///
@@ -81,5 +82,43 @@ impl SettingsManager {
             .into_iter()
             .map(|entry| (entry.key, entry.value))
             .collect())
+    }
+
+    /// 注册或覆盖插件 settings schema。
+    ///
+    /// 写入前先用 [`validate_schema_shape`] 做最小形状校验（必须是 JSON 对象且含
+    /// `type` 或 `properties`）。v0.1 不在 [`Self::set`] 时按 schema 校验 value，
+    /// 待 v0.2 引入 `jsonschema` crate 后补齐。
+    ///
+    /// # Errors
+    /// - `plugin_name` 为空 / schema 形状非法 → [`cycms_core::Error::ValidationError`]
+    /// - DB 故障 → [`cycms_core::Error::Internal`]
+    pub async fn register_schema(&self, plugin_name: &str, schema: Value) -> Result<PluginSchema> {
+        validate_schema_shape(&schema).map_err(cycms_core::Error::from)?;
+        self.schemas.upsert(plugin_name, schema).await
+    }
+
+    /// 查找插件 schema；未注册返回 `None`。
+    ///
+    /// # Errors
+    /// 见 [`PluginSchemaRepository::find`]。
+    pub async fn get_schema(&self, plugin_name: &str) -> Result<Option<PluginSchema>> {
+        self.schemas.find(plugin_name).await
+    }
+
+    /// 解除插件 schema 注册；若未注册返回 `false`。
+    ///
+    /// # Errors
+    /// 见 [`PluginSchemaRepository::delete`]。
+    pub async fn unregister_schema(&self, plugin_name: &str) -> Result<bool> {
+        self.schemas.delete(plugin_name).await
+    }
+
+    /// 列出所有插件 schema，按 `plugin_name` 升序；供管理后台概览页面使用。
+    ///
+    /// # Errors
+    /// 见 [`PluginSchemaRepository::list`]。
+    pub async fn list_schemas(&self) -> Result<Vec<PluginSchema>> {
+        self.schemas.list().await
     }
 }
