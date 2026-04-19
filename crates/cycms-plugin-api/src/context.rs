@@ -6,6 +6,7 @@ use cycms_content_model::ContentModelRegistry;
 use cycms_db::DatabasePool;
 use cycms_events::EventBus;
 use cycms_permission::PermissionEngine;
+use cycms_publish::PublishManager;
 use cycms_revision::RevisionManager;
 use cycms_settings::SettingsManager;
 
@@ -38,6 +39,8 @@ pub struct PluginContext {
     pub content_engine: Arc<ContentEngine>,
     /// 内容版本快照与回滚门面（任务 12）。
     pub revision_manager: Arc<RevisionManager>,
+    /// 发布状态机门面（任务 13）。
+    pub publish_manager: Arc<PublishManager>,
     /// 插件间服务发现与调用。
     pub service_registry: Arc<ServiceRegistry>,
 }
@@ -55,6 +58,7 @@ impl PluginContext {
         content_model: Arc<ContentModelRegistry>,
         content_engine: Arc<ContentEngine>,
         revision_manager: Arc<RevisionManager>,
+        publish_manager: Arc<PublishManager>,
         service_registry: Arc<ServiceRegistry>,
     ) -> Self {
         Self {
@@ -66,6 +70,7 @@ impl PluginContext {
             content_model,
             content_engine,
             revision_manager,
+            publish_manager,
             service_registry,
         }
     }

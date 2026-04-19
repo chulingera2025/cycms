@@ -423,6 +423,7 @@ dependencies = [
  "cycms-migrate",
  "cycms-permission",
  "cycms-plugin-api",
+ "cycms-publish",
  "cycms-revision",
  "cycms-settings",
  "serde_json",
@@ -494,6 +495,7 @@ dependencies = [
  "cycms-db",
  "cycms-events",
  "cycms-permission",
+ "cycms-publish",
  "cycms-revision",
  "cycms-settings",
  "thiserror",
@@ -516,6 +518,22 @@ version = "0.1.0"
 [[package]]
 name = "cycms-publish"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "cycms-config",
+ "cycms-content-engine",
+ "cycms-content-model",
+ "cycms-core",
+ "cycms-db",
+ "cycms-events",
+ "cycms-migrate",
+ "cycms-revision",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "cycms-revision"

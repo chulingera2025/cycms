@@ -11,6 +11,7 @@ use cycms_events::EventBus;
 use cycms_migrate::MigrationEngine;
 use cycms_permission::PermissionEngine;
 use cycms_plugin_api::ServiceRegistry;
+use cycms_publish::PublishManager;
 use cycms_revision::RevisionManager;
 use cycms_settings::SettingsManager;
 
@@ -39,6 +40,8 @@ pub struct AppContext {
     pub content_engine: Arc<ContentEngine>,
     /// 任务 12：内容版本快照与回滚门面。
     pub revision_manager: Arc<RevisionManager>,
+    /// 任务 13：发布状态机门面（Draft → Published / Published → Draft）。
+    pub publish_manager: Arc<PublishManager>,
     /// 占位：任务 15 替换为 `Arc<PluginManager>`
     pub plugin_manager: Arc<PlaceholderService>,
 }
@@ -101,6 +104,8 @@ impl Kernel {
         }
         let service_registry = Arc::new(ServiceRegistry::new());
         let revision_manager = Arc::new(RevisionManager::new(Arc::clone(&db)));
+        let publish_manager =
+            Arc::new(PublishManager::new(&db, Arc::clone(&event_bus)));
         let content_engine = Arc::new(ContentEngine::new(
             Arc::clone(&db),
             Arc::clone(&content_model),
@@ -118,6 +123,7 @@ impl Kernel {
             &content_model,
             &content_engine,
             &revision_manager,
+            &publish_manager,
         )?;
 
         Ok(AppContext {
@@ -131,6 +137,7 @@ impl Kernel {
             content_model,
             content_engine,
             revision_manager,
+            publish_manager,
             plugin_manager: Arc::new(PlaceholderService),
         })
     }
@@ -171,6 +178,7 @@ fn register_core_services(
     content_model: &Arc<ContentModelRegistry>,
     content_engine: &Arc<ContentEngine>,
     revision_manager: &Arc<RevisionManager>,
+    publish_manager: &Arc<PublishManager>,
 ) -> Result<()> {
     registry.register("system.db", Arc::clone(db))?;
     registry.register("system.auth", Arc::clone(auth_engine))?;
@@ -180,5 +188,6 @@ fn register_core_services(
     registry.register("system.content_model", Arc::clone(content_model))?;
     registry.register("system.content_engine", Arc::clone(content_engine))?;
     registry.register("system.revision", Arc::clone(revision_manager))?;
+    registry.register("system.publish", Arc::clone(publish_manager))?;
     Ok(())
 }

@@ -9,6 +9,7 @@ use cycms_db::DatabasePool;
 use cycms_events::{DEFAULT_CHANNEL_CAPACITY, Event, EventBus, EventKind};
 use cycms_kernel::Kernel;
 use cycms_permission::PermissionEngine;
+use cycms_publish::PublishManager;
 use cycms_revision::RevisionManager;
 use cycms_settings::SettingsManager;
 use serde_json::json;
@@ -92,6 +93,7 @@ idle_timeout_secs = 60
             "system.db",
             "system.events",
             "system.permission",
+            "system.publish",
             "system.revision",
             "system.settings",
         ]
@@ -119,6 +121,9 @@ idle_timeout_secs = 60
         .unwrap();
     ctx.service_registry
         .get::<RevisionManager>("system.revision")
+        .unwrap();
+    ctx.service_registry
+        .get::<PublishManager>("system.publish")
         .unwrap();
 
     // ContentModel 已挂入上下文并完成默认种子：page (Single) + post (Collection)
