@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use cycms_auth::AuthEngine;
 use cycms_config::DatabaseDriver;
+use cycms_content_model::{ContentModelRegistry, ContentTypeKind};
 use cycms_db::DatabasePool;
 use cycms_events::{DEFAULT_CHANNEL_CAPACITY, Event, EventBus, EventKind};
 use cycms_kernel::Kernel;
@@ -84,6 +85,7 @@ idle_timeout_secs = 60
         keys,
         vec![
             "system.auth",
+            "system.content_model",
             "system.db",
             "system.events",
             "system.permission",
@@ -105,6 +107,15 @@ idle_timeout_secs = 60
     ctx.service_registry
         .get::<DatabasePool>("system.db")
         .unwrap();
+    ctx.service_registry
+        .get::<ContentModelRegistry>("system.content_model")
+        .unwrap();
+
+    // ContentModel 已挂入上下文并完成默认种子：page (Single) + post (Collection)
+    let page = ctx.content_model.get_type("page").await.unwrap().unwrap();
+    assert_eq!(page.kind, ContentTypeKind::Single);
+    let post = ctx.content_model.get_type("post").await.unwrap().unwrap();
+    assert_eq!(post.kind, ContentTypeKind::Collection);
 }
 
 #[tokio::test]

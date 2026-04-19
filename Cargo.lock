@@ -395,6 +395,7 @@ version = "0.1.0"
 dependencies = [
  "cycms-auth",
  "cycms-config",
+ "cycms-content-model",
  "cycms-core",
  "cycms-db",
  "cycms-events",
@@ -465,6 +466,7 @@ dependencies = [
  "async-trait",
  "axum",
  "cycms-auth",
+ "cycms-content-model",
  "cycms-core",
  "cycms-db",
  "cycms-events",

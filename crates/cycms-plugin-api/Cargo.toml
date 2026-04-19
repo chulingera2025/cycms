@@ -9,6 +9,7 @@ license.workspace = true
 cycms-core = { workspace = true }
 cycms-db = { workspace = true }
 cycms-auth = { workspace = true }
+cycms-content-model = { workspace = true }
 cycms-events = { workspace = true }
 cycms-permission = { workspace = true }
 cycms-settings = { workspace = true }

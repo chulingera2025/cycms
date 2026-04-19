@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use cycms_auth::AuthEngine;
 use cycms_config::AppConfig;
+use cycms_content_model::{ContentModelRegistry, FieldTypeRegistry, seed_default_types};
 use cycms_core::Result;
 use cycms_db::DatabasePool;
 use cycms_events::EventBus;
@@ -11,7 +12,7 @@ use cycms_permission::PermissionEngine;
 use cycms_plugin_api::ServiceRegistry;
 use cycms_settings::SettingsManager;
 
-// TODO!!!: 任务 10/15 余下占位字段逐步替换为真实子系统类型（PluginManager、ContentModelRegistry）
+// TODO!!!: 任务 15 余下占位字段替换为真实子系统类型（`PluginManager`）
 
 /// 全局应用上下文，Kernel bootstrap 后在所有组件间共享。
 #[non_exhaustive]
@@ -30,10 +31,10 @@ pub struct AppContext {
     pub settings_manager: Arc<SettingsManager>,
     /// 任务 9：插件间服务发现与调用门面。
     pub service_registry: Arc<ServiceRegistry>,
+    /// 任务 10：内容类型管理与字段校验 / Schema 输出门面。
+    pub content_model: Arc<ContentModelRegistry>,
     /// 占位：任务 15 替换为 `Arc<PluginManager>`
     pub plugin_manager: Arc<PlaceholderService>,
-    /// 占位：任务 10 替换为 `Arc<ContentModelRegistry>`
-    pub content_model_registry: Arc<PlaceholderService>,
 }
 
 /// 各子系统实现前的临时占位类型，任务 2–21 逐步替换。
@@ -63,16 +64,17 @@ impl Kernel {
     /// 初始化所有子系统并返回 [`AppContext`]。
     ///
     /// 初始化顺序：Config → DB → Migration → Auth → Permission → `EventBus` →
-    /// `ServiceRegistry` → `PluginManager` → `ContentModel` → API
+    /// `ServiceRegistry` → `ContentModel` → `PluginManager` → API
     ///
-    /// 当 `system_migrations_dir` 为 `Some` 时会执行系统迁移；传 `None` 跳过，适合只
-    /// 想构造上下文做诊断（例如 `cycms config show`）的调用方。
+    /// 当 `system_migrations_dir` 为 `Some` 时会执行系统迁移并注入默认 `page` / `post`
+    /// 内容类型；传 `None` 跳过迁移与 seed，适合只想构造上下文做诊断的调用方。
     ///
     /// # Errors
     /// 任意子系统初始化失败时返回错误。
     pub async fn bootstrap(&self, system_migrations_dir: Option<&Path>) -> Result<AppContext> {
         let db = Arc::new(DatabasePool::connect(&self.config.database).await?);
 
+        let migrations_applied = system_migrations_dir.is_some();
         if let Some(dir) = system_migrations_dir {
             MigrationEngine::new(Arc::clone(&db))
                 .run_system_migrations(dir)
@@ -83,6 +85,14 @@ impl Kernel {
         let permission_engine = Arc::new(PermissionEngine::new(Arc::clone(&db)));
         let event_bus = Arc::new(EventBus::new());
         let settings_manager = Arc::new(SettingsManager::new(Arc::clone(&db)));
+        let field_type_registry = Arc::new(FieldTypeRegistry::new());
+        let content_model = Arc::new(ContentModelRegistry::new(
+            Arc::clone(&db),
+            Arc::clone(&field_type_registry),
+        ));
+        if migrations_applied {
+            seed_default_types(&content_model).await?;
+        }
         let service_registry = Arc::new(ServiceRegistry::new());
         register_core_services(
             &service_registry,
@@ -91,6 +101,7 @@ impl Kernel {
             &permission_engine,
             &event_bus,
             &settings_manager,
+            &content_model,
         )?;
 
         Ok(AppContext {
@@ -101,8 +112,8 @@ impl Kernel {
             event_bus,
             settings_manager,
             service_registry,
+            content_model,
             plugin_manager: Arc::new(PlaceholderService),
-            content_model_registry: Arc::new(PlaceholderService),
         })
     }
 
@@ -138,11 +149,13 @@ fn register_core_services(
     permission_engine: &Arc<PermissionEngine>,
     event_bus: &Arc<EventBus>,
     settings_manager: &Arc<SettingsManager>,
+    content_model: &Arc<ContentModelRegistry>,
 ) -> Result<()> {
     registry.register("system.db", Arc::clone(db))?;
     registry.register("system.auth", Arc::clone(auth_engine))?;
     registry.register("system.permission", Arc::clone(permission_engine))?;
     registry.register("system.events", Arc::clone(event_bus))?;
     registry.register("system.settings", Arc::clone(settings_manager))?;
+    registry.register("system.content_model", Arc::clone(content_model))?;
     Ok(())
 }

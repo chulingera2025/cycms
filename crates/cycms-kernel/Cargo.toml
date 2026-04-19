@@ -14,6 +14,7 @@ cycms-auth = { workspace = true }
 cycms-permission = { workspace = true }
 cycms-events = { workspace = true }
 cycms-settings = { workspace = true }
+cycms-content-model = { workspace = true }
 cycms-plugin-api = { workspace = true }
 tokio = { workspace = true }
 
