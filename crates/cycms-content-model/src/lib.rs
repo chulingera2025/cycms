@@ -12,10 +12,13 @@
 //! - TODO!!!: 后续提交依次加入 `repository` / `validation` / `schema` / `field_type` / `service` / `seed`。
 
 mod error;
+mod field_type;
 mod model;
 mod repository;
+mod validation;
 
 pub use error::{ContentModelError, FieldViolation};
+pub use field_type::{FieldTypeHandler, FieldTypeRegistry};
 pub use model::{
     ContentTypeDefinition, ContentTypeKind, CreateContentTypeInput, FieldDefinition, FieldType,
     RelationKind, UpdateContentTypeInput, ValidationRule,
@@ -24,3 +27,4 @@ pub use repository::{
     ContentTypeRepository, NewContentTypeRow, UpdateContentTypeRow, new_content_type_id,
     normalize_api_id, normalize_name, validate_api_id,
 };
+pub use validation::{validate_field, validate_field_definitions, validate_fields};
