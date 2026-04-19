@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use chrono::NaiveDateTime;
 use cycms_core::Result;
-use cycms_db::DatabasePool;
+use cycms_db::{DatabasePool, DatabaseType};
 use serde_json::Value;
 use sqlx::Row;
 use sqlx::mysql::MySqlRow;
@@ -22,6 +22,7 @@ use uuid::Uuid;
 
 use crate::error::ContentEngineError;
 use crate::model::{ContentEntry, ContentStatus};
+use crate::query::{ContentQuery, QueryParam, compile_list_query};
 
 /// 插入 `content_entries` 所需的行参数。
 #[derive(Debug, Clone)]
@@ -43,6 +44,15 @@ pub struct UpdateContentEntryRow {
     pub status: ContentStatus,
     pub fields: Value,
     pub updated_by: String,
+}
+
+/// 列表查询的返回结构：包含 entries 与服务端汇总的分页信息。
+#[derive(Debug, Clone)]
+pub struct ListQueryResult {
+    pub entries: Vec<ContentEntry>,
+    pub total: u64,
+    pub page: u64,
+    pub page_size: u64,
 }
 
 /// 生成新的 content entry id（UUID v4 字符串）。
@@ -350,6 +360,131 @@ impl ContentEntryRepository {
             }
         }
     }
+
+    /// 列出指定 content type 的实例，按 [`ContentQuery`] 的过滤 / 排序 / 分页执行。
+    ///
+    /// 同一 plan 内会做两次 SQL：一次 `COUNT(*)` 获取总数，一次按分页读取实体。
+    ///
+    /// # Errors
+    /// - 查询编译失败 → [`ContentEngineError::InvalidQuery`]
+    /// - DB 故障 / 解码失败 → [`ContentEngineError::Database`]
+    pub async fn list(
+        &self,
+        content_type_id: &str,
+        query: &ContentQuery,
+        default_page_size: u64,
+        max_page_size: u64,
+    ) -> Result<ListQueryResult> {
+        let db_type = self.db.db_type();
+        let plan = compile_list_query(
+            db_type,
+            content_type_id,
+            query,
+            default_page_size,
+            max_page_size,
+        )?;
+        let count_sql = format!(
+            "SELECT COUNT(*) FROM content_entries WHERE {}",
+            plan.where_sql
+        );
+        let prefix = match db_type {
+            DatabaseType::Postgres => PG_SELECT_LIST_PREFIX,
+            DatabaseType::MySql => MYSQL_SELECT_LIST_PREFIX,
+            DatabaseType::Sqlite => SQLITE_SELECT_LIST_PREFIX,
+        };
+        let list_sql = format!(
+            "{prefix} WHERE {} ORDER BY {} LIMIT {} OFFSET {}",
+            plan.where_sql, plan.order_sql, plan.limit_placeholder, plan.offset_placeholder
+        );
+
+        let (entries, total) = match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => {
+                let mut count_q = sqlx::query(&count_sql);
+                for p in &plan.params[..plan.content_param_count] {
+                    count_q = bind_pg_param(count_q, p);
+                }
+                let total: i64 = count_q
+                    .fetch_one(pool)
+                    .await
+                    .map_err(ContentEngineError::Database)?
+                    .try_get(0)
+                    .map_err(ContentEngineError::Database)?;
+
+                let mut list_q = sqlx::query(&list_sql);
+                for p in &plan.params {
+                    list_q = bind_pg_param(list_q, p);
+                }
+                let rows = list_q
+                    .fetch_all(pool)
+                    .await
+                    .map_err(ContentEngineError::Database)?;
+                let entries = rows
+                    .iter()
+                    .map(pg_row_to_entry)
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                (entries, total)
+            }
+            DatabasePool::MySql(pool) => {
+                let mut count_q = sqlx::query(&count_sql);
+                for p in &plan.params[..plan.content_param_count] {
+                    count_q = bind_mysql_param(count_q, p);
+                }
+                let total: i64 = count_q
+                    .fetch_one(pool)
+                    .await
+                    .map_err(ContentEngineError::Database)?
+                    .try_get(0)
+                    .map_err(ContentEngineError::Database)?;
+
+                let mut list_q = sqlx::query(&list_sql);
+                for p in &plan.params {
+                    list_q = bind_mysql_param(list_q, p);
+                }
+                let rows = list_q
+                    .fetch_all(pool)
+                    .await
+                    .map_err(ContentEngineError::Database)?;
+                let entries = rows
+                    .iter()
+                    .map(mysql_row_to_entry)
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                (entries, total)
+            }
+            DatabasePool::Sqlite(pool) => {
+                let mut count_q = sqlx::query(&count_sql);
+                for p in &plan.params[..plan.content_param_count] {
+                    count_q = bind_sqlite_param(count_q, p);
+                }
+                let total: i64 = count_q
+                    .fetch_one(pool)
+                    .await
+                    .map_err(ContentEngineError::Database)?
+                    .try_get(0)
+                    .map_err(ContentEngineError::Database)?;
+
+                let mut list_q = sqlx::query(&list_sql);
+                for p in &plan.params {
+                    list_q = bind_sqlite_param(list_q, p);
+                }
+                let rows = list_q
+                    .fetch_all(pool)
+                    .await
+                    .map_err(ContentEngineError::Database)?;
+                let entries = rows
+                    .iter()
+                    .map(sqlite_row_to_entry)
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                (entries, total)
+            }
+        };
+
+        Ok(ListQueryResult {
+            entries,
+            total: u64::try_from(total).unwrap_or(0),
+            page: plan.page,
+            page_size: plan.page_size,
+        })
+    }
 }
 
 const PG_INSERT: &str = "INSERT INTO content_entries \
@@ -418,6 +553,52 @@ const PG_COUNT_BY_TYPE: &str =
     "SELECT COUNT(*) FROM content_entries WHERE content_type_id = $1::UUID";
 const MYSQL_COUNT_BY_TYPE: &str = "SELECT COUNT(*) FROM content_entries WHERE content_type_id = ?";
 const SQLITE_COUNT_BY_TYPE: &str = "SELECT COUNT(*) FROM content_entries WHERE content_type_id = ?";
+
+const PG_SELECT_LIST_PREFIX: &str = "SELECT id::TEXT AS id, content_type_id::TEXT AS content_type_id, \
+    slug, status, current_version_id::TEXT AS current_version_id, \
+    published_version_id::TEXT AS published_version_id, fields, \
+    created_by::TEXT AS created_by, updated_by::TEXT AS updated_by, \
+    created_at, updated_at, published_at FROM content_entries";
+const MYSQL_SELECT_LIST_PREFIX: &str = "SELECT id, content_type_id, slug, status, \
+    current_version_id, published_version_id, fields, created_by, updated_by, \
+    created_at, updated_at, published_at FROM content_entries";
+const SQLITE_SELECT_LIST_PREFIX: &str = MYSQL_SELECT_LIST_PREFIX;
+
+fn bind_pg_param<'q>(
+    q: sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments>,
+    p: &QueryParam,
+) -> sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments> {
+    match p {
+        QueryParam::Text(s) => q.bind(s.clone()),
+        QueryParam::Int(i) => q.bind(*i),
+        QueryParam::Float(f) => q.bind(*f),
+        QueryParam::Bool(b) => q.bind(*b),
+    }
+}
+
+fn bind_mysql_param<'q>(
+    q: sqlx::query::Query<'q, sqlx::MySql, sqlx::mysql::MySqlArguments>,
+    p: &QueryParam,
+) -> sqlx::query::Query<'q, sqlx::MySql, sqlx::mysql::MySqlArguments> {
+    match p {
+        QueryParam::Text(s) => q.bind(s.clone()),
+        QueryParam::Int(i) => q.bind(*i),
+        QueryParam::Float(f) => q.bind(*f),
+        QueryParam::Bool(b) => q.bind(*b),
+    }
+}
+
+fn bind_sqlite_param<'q>(
+    q: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
+    p: &QueryParam,
+) -> sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
+    match p {
+        QueryParam::Text(s) => q.bind(s.clone()),
+        QueryParam::Int(i) => q.bind(*i),
+        QueryParam::Float(f) => q.bind(*f),
+        QueryParam::Bool(b) => q.bind(*b),
+    }
+}
 
 fn pg_row_to_entry(row: &PgRow) -> std::result::Result<ContentEntry, ContentEngineError> {
     let status_raw: String = row

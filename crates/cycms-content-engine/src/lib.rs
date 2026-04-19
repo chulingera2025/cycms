@@ -12,12 +12,13 @@
 //! - [`error`]：`ContentEngineError` + 跨 crate 映射；
 //! - [`model`]：`ContentEntry` / `ContentStatus` / 分页响应等数据结构；
 //! - [`repository`]：`content_entries` 表的三方言 CRUD；
-//! - TODO!!!: Step 4 加入 `query`（筛选 / 排序 / 分页）；
+//! - [`query`]：`ContentQuery` + 13 种 filter operator 的 SQL 编译；
 //! - TODO!!!: Step 5 加入 `populate`（单层关联加载）；
 //! - TODO!!!: Step 6/7 加入 `service`（`ContentEngine` 门面 + `EventBus` 集成）。
 
 mod error;
 mod model;
+mod query;
 mod repository;
 
 pub use error::{ContentEngineError, ReferenceViolation};
@@ -25,6 +26,11 @@ pub use model::{
     ContentEntry, ContentStatus, CreateEntryInput, PaginatedResponse, PaginationMeta,
     UpdateEntryInput,
 };
+pub use query::{
+    ColumnField, ContentQuery, FieldRef, FilterOperator, FilterSpec, ListQueryPlan, QueryParam,
+    SortDir, SortSpec, compile_list_query,
+};
 pub use repository::{
-    ContentEntryRepository, NewContentEntryRow, UpdateContentEntryRow, new_content_entry_id,
+    ContentEntryRepository, ListQueryResult, NewContentEntryRow, UpdateContentEntryRow,
+    new_content_entry_id,
 };
