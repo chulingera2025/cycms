@@ -28,6 +28,8 @@
     missing_docs
 )]
 mod bindings;
+mod host;
+mod host_impls;
 mod runtime;
 
 pub use runtime::WasmPluginRuntime;
