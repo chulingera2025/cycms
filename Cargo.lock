@@ -538,12 +538,16 @@ dependencies = [
 name = "cycms-plugin-manager"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "cycms-config",
  "cycms-core",
  "cycms-db",
+ "cycms-events",
  "cycms-migrate",
  "cycms-permission",
+ "cycms-plugin-api",
+ "cycms-settings",
  "semver",
  "serde",
  "serde_json",
@@ -552,6 +556,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "toml",
+ "tracing",
  "uuid",
 ]
 

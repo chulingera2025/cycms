@@ -10,7 +10,7 @@ use crate::error::PluginManagerError;
 ///
 /// 使用 [`PluginManifest::from_toml_str`] 统一入口，解析同时执行结构性校验，
 /// 下游 `PluginManager` 拿到的都是语法合法的实例。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PluginManifest {
     pub plugin: PluginMeta,
     pub compatibility: CompatibilitySpec,
@@ -23,7 +23,7 @@ pub struct PluginManifest {
 }
 
 /// 插件元信息段（Req 20.1）：必填 `name` / `version` / `kind` / `entry`。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PluginMeta {
     pub name: String,
     pub version: String,
@@ -71,13 +71,13 @@ impl std::str::FromStr for PluginKind {
 }
 
 /// 宿主兼容性（Req 20.2）。`cycms` 为 `SemVer` range 字面量，安装期比对当前 cycms 版本。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CompatibilitySpec {
     pub cycms: String,
 }
 
 /// 依赖其他插件的声明（Req 20.3）。`version` 为 `SemVer` range 字面量。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DependencySpec {
     pub version: String,
     #[serde(default)]
@@ -85,13 +85,13 @@ pub struct DependencySpec {
 }
 
 /// 插件权限点列表容器（Req 20.4）。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PermissionsSpec {
     pub definitions: Vec<PermissionEntry>,
 }
 
 /// 单条权限定义（Req 20.4）。`scope` 省略时默认为 `all`。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PermissionEntry {
     pub domain: String,
     pub resource: String,
@@ -105,7 +105,7 @@ const fn default_scope() -> PermissionScope {
 }
 
 /// 前端入口信息（Req 20.5）。v0.1 仅存储路径字面量，AdminWeb 动态加载逻辑在任务 21。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FrontendSpec {
     pub entry: String,
 }

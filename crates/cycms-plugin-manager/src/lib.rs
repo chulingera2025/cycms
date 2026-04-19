@@ -14,6 +14,8 @@ mod manifest;
 mod model;
 mod repository;
 mod resolver;
+mod runtime;
+mod service;
 
 pub use discovery::{DiscoveredPlugin, scan_plugins_dir};
 pub use error::PluginManagerError;
@@ -24,3 +26,5 @@ pub use manifest::{
 pub use model::{NewPluginRow, PluginRecord, PluginStatus};
 pub use repository::PluginRepository;
 pub use resolver::{check_host_compatibility, reverse_dependencies, topological_order};
+pub use runtime::PluginRuntime;
+pub use service::{PluginInfo, PluginManager, PluginManagerConfig};
