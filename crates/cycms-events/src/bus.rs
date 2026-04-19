@@ -50,10 +50,7 @@ impl EventBus {
     /// 发布一条事件。当该 `kind` 无订阅者时为 no-op（吞掉 `SendError::NoReceivers`）。
     pub fn publish(&self, event: Event) {
         let kind = event.kind.clone();
-        let guard = self
-            .channels
-            .read()
-            .unwrap_or_else(PoisonError::into_inner);
+        let guard = self.channels.read().unwrap_or_else(PoisonError::into_inner);
         if let Some(sender) = guard.get(&kind) {
             // SendError 只在无订阅者时出现，对齐 9.2 的「静默丢弃」语义
             let _ = sender.send(Arc::new(event));
@@ -63,10 +60,7 @@ impl EventBus {
     /// 返回某类事件当前的订阅者数量（监控 / 测试用途）。
     #[must_use]
     pub fn receiver_count(&self, kind: &EventKind) -> usize {
-        let guard = self
-            .channels
-            .read()
-            .unwrap_or_else(PoisonError::into_inner);
+        let guard = self.channels.read().unwrap_or_else(PoisonError::into_inner);
         guard.get(kind).map_or(0, broadcast::Sender::receiver_count)
     }
 
@@ -105,7 +99,7 @@ impl Default for EventBus {
 
 #[cfg(test)]
 mod tests {
-    use super::{EventBus, DEFAULT_CHANNEL_CAPACITY, DEFAULT_HANDLER_TIMEOUT};
+    use super::{DEFAULT_CHANNEL_CAPACITY, DEFAULT_HANDLER_TIMEOUT, EventBus};
     use crate::event::{Event, EventKind};
 
     #[test]

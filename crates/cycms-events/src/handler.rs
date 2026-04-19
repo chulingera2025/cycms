@@ -57,11 +57,7 @@ impl EventBus {
     /// 内部启动一个 tokio task 持有 broadcast receiver，对每条事件调用
     /// `handler.handle()`。任务生命周期由返回的 [`SubscriptionHandle`] 控制；
     /// 句柄被丢弃时 task 仍会持续运行，需显式调用 `unsubscribe`。
-    pub fn subscribe(
-        &self,
-        kind: EventKind,
-        handler: Arc<dyn EventHandler>,
-    ) -> SubscriptionHandle {
+    pub fn subscribe(&self, kind: EventKind, handler: Arc<dyn EventHandler>) -> SubscriptionHandle {
         let id = Uuid::new_v4();
         let mut rx = self.subscribe_channel(kind.clone());
         let handler_name = handler.name().to_owned();

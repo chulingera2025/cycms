@@ -65,5 +65,9 @@ async fn unsubscribe_leaves_other_handlers_intact() {
     bus.publish(Event::new(EventKind::MediaUploaded));
     wait_for(&b, 2).await;
 
-    assert_eq!(a.load(Ordering::SeqCst), 1, "unsubscribed handler must not be called");
+    assert_eq!(
+        a.load(Ordering::SeqCst),
+        1,
+        "unsubscribed handler must not be called"
+    );
 }
