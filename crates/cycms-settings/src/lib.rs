@@ -19,5 +19,6 @@ mod schema;
 mod service;
 
 pub use error::SettingsError;
+pub use model::{PluginSchema, SettingEntry};
 pub use repository::{PluginSchemaRepository, SettingsRepository};
 pub use service::SettingsManager;
