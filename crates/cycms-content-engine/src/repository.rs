@@ -55,6 +55,15 @@ pub struct ListQueryResult {
     pub page_size: u64,
 }
 
+/// `content_relations` 反向查询的命中行：表达"谁在通过哪个字段引用此 target"。
+#[derive(Debug, Clone)]
+#[allow(clippy::struct_field_names)]
+pub struct InboundReference {
+    pub source_entry_id: String,
+    pub field_api_id: String,
+    pub relation_kind: String,
+}
+
 /// 生成新的 content entry id（UUID v4 字符串）。
 #[must_use]
 pub fn new_content_entry_id() -> String {
@@ -361,6 +370,43 @@ impl ContentEntryRepository {
         }
     }
 
+    /// 反向查询 `content_relations` 中所有指向 `target_id` 的关联，用于硬删前的
+    /// 引用完整性检查。返回空列表表示该实例可被安全物理删除。
+    ///
+    /// # Errors
+    /// DB 故障 → [`ContentEngineError::Database`]。
+    pub async fn find_inbound_references(&self, target_id: &str) -> Result<Vec<InboundReference>> {
+        match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => sqlx::query(PG_INBOUND_REFS)
+                .bind(target_id)
+                .fetch_all(pool)
+                .await
+                .map_err(ContentEngineError::Database)?
+                .iter()
+                .map(pg_row_to_reference)
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(Into::into),
+            DatabasePool::MySql(pool) => sqlx::query(MYSQL_INBOUND_REFS)
+                .bind(target_id)
+                .fetch_all(pool)
+                .await
+                .map_err(ContentEngineError::Database)?
+                .iter()
+                .map(mysql_row_to_reference)
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(Into::into),
+            DatabasePool::Sqlite(pool) => sqlx::query(SQLITE_INBOUND_REFS)
+                .bind(target_id)
+                .fetch_all(pool)
+                .await
+                .map_err(ContentEngineError::Database)?
+                .iter()
+                .map(sqlite_row_to_reference)
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(Into::into),
+        }
+    }
+
     /// 列出指定 content type 的实例，按 [`ContentQuery`] 的过滤 / 排序 / 分页执行。
     ///
     /// 同一 plan 内会做两次 SQL：一次 `COUNT(*)` 获取总数，一次按分页读取实体。
@@ -554,6 +600,13 @@ const PG_COUNT_BY_TYPE: &str =
 const MYSQL_COUNT_BY_TYPE: &str = "SELECT COUNT(*) FROM content_entries WHERE content_type_id = ?";
 const SQLITE_COUNT_BY_TYPE: &str = "SELECT COUNT(*) FROM content_entries WHERE content_type_id = ?";
 
+const PG_INBOUND_REFS: &str = "SELECT source_entry_id::TEXT AS source_entry_id, field_api_id, relation_kind \
+     FROM content_relations WHERE target_entry_id = $1::UUID";
+const MYSQL_INBOUND_REFS: &str = "SELECT source_entry_id, field_api_id, relation_kind \
+     FROM content_relations WHERE target_entry_id = ?";
+const SQLITE_INBOUND_REFS: &str = "SELECT source_entry_id, field_api_id, relation_kind \
+     FROM content_relations WHERE target_entry_id = ?";
+
 const PG_SELECT_LIST_PREFIX: &str = "SELECT id::TEXT AS id, content_type_id::TEXT AS content_type_id, \
     slug, status, current_version_id::TEXT AS current_version_id, \
     published_version_id::TEXT AS published_version_id, fields, \
@@ -726,5 +779,51 @@ fn sqlite_row_to_entry(row: &SqliteRow) -> std::result::Result<ContentEntry, Con
             .try_get("published_at")
             .map_err(ContentEngineError::Database)?,
         populated: None,
+    })
+}
+
+fn pg_row_to_reference(row: &PgRow) -> std::result::Result<InboundReference, ContentEngineError> {
+    Ok(InboundReference {
+        source_entry_id: row
+            .try_get("source_entry_id")
+            .map_err(ContentEngineError::Database)?,
+        field_api_id: row
+            .try_get("field_api_id")
+            .map_err(ContentEngineError::Database)?,
+        relation_kind: row
+            .try_get("relation_kind")
+            .map_err(ContentEngineError::Database)?,
+    })
+}
+
+fn mysql_row_to_reference(
+    row: &MySqlRow,
+) -> std::result::Result<InboundReference, ContentEngineError> {
+    Ok(InboundReference {
+        source_entry_id: row
+            .try_get("source_entry_id")
+            .map_err(ContentEngineError::Database)?,
+        field_api_id: row
+            .try_get("field_api_id")
+            .map_err(ContentEngineError::Database)?,
+        relation_kind: row
+            .try_get("relation_kind")
+            .map_err(ContentEngineError::Database)?,
+    })
+}
+
+fn sqlite_row_to_reference(
+    row: &SqliteRow,
+) -> std::result::Result<InboundReference, ContentEngineError> {
+    Ok(InboundReference {
+        source_entry_id: row
+            .try_get("source_entry_id")
+            .map_err(ContentEngineError::Database)?,
+        field_api_id: row
+            .try_get("field_api_id")
+            .map_err(ContentEngineError::Database)?,
+        relation_kind: row
+            .try_get("relation_kind")
+            .map_err(ContentEngineError::Database)?,
     })
 }

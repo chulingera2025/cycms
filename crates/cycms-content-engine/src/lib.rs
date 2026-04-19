@@ -14,13 +14,14 @@
 //! - [`repository`]：`content_entries` 表的三方言 CRUD；
 //! - [`query`]：`ContentQuery` + 13 种 filter operator 的 SQL 编译；
 //! - [`populate`]：`content_relations` 单层关联加载；
-//! - TODO!!!: Step 6/7 加入 `service`（`ContentEngine` 门面 + `EventBus` 集成）。
+//! - [`service`]：`ContentEngine` 门面（Step 6 完成 `delete`，Step 7 补齐 CRUD）。
 
 mod error;
 mod model;
 mod populate;
 mod query;
 mod repository;
+mod service;
 
 pub use error::{ContentEngineError, ReferenceViolation};
 pub use model::{
@@ -33,6 +34,7 @@ pub use query::{
     SortDir, SortSpec, compile_list_query,
 };
 pub use repository::{
-    ContentEntryRepository, ListQueryResult, NewContentEntryRow, UpdateContentEntryRow,
-    new_content_entry_id,
+    ContentEntryRepository, InboundReference, ListQueryResult, NewContentEntryRow,
+    UpdateContentEntryRow, new_content_entry_id,
 };
+pub use service::ContentEngine;
