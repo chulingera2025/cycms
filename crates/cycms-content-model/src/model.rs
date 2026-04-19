@@ -23,6 +23,26 @@ impl ContentTypeKind {
     }
 }
 
+impl std::fmt::Display for ContentTypeKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for ContentTypeKind {
+    type Err = crate::error::ContentModelError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "collection" => Ok(Self::Collection),
+            "single" => Ok(Self::Single),
+            other => Err(crate::error::ContentModelError::InputValidation(format!(
+                "invalid content type kind: {other}"
+            ))),
+        }
+    }
+}
+
 /// `FieldType`：内置类型 + 插件自定义类型（Req 3.2 / 3.6）。
 ///
 /// Tagged enum 序列化：`{ "kind": "<snake_case>", ...payload }`。

@@ -13,9 +13,14 @@
 
 mod error;
 mod model;
+mod repository;
 
 pub use error::{ContentModelError, FieldViolation};
 pub use model::{
     ContentTypeDefinition, ContentTypeKind, CreateContentTypeInput, FieldDefinition, FieldType,
     RelationKind, UpdateContentTypeInput, ValidationRule,
+};
+pub use repository::{
+    ContentTypeRepository, NewContentTypeRow, UpdateContentTypeRow, new_content_type_id,
+    normalize_api_id, normalize_name, validate_api_id,
 };
