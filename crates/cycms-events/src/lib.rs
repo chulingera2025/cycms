@@ -8,6 +8,8 @@
 //! - 任务 16/17 插件运行时：注册 [`EventHandler`] 订阅
 //! - 任务 19 AuditLogger：订阅关键事件写审计日志
 
+mod error;
 mod event;
 
+pub use error::EventError;
 pub use event::{Event, EventKind};
