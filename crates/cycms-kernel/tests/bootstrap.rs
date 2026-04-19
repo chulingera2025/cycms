@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use cycms_config::DatabaseDriver;
 use cycms_db::DatabasePool;
+use cycms_events::{DEFAULT_CHANNEL_CAPACITY, Event, EventKind};
 use cycms_kernel::Kernel;
 use tempfile::tempdir;
 
@@ -57,6 +58,11 @@ idle_timeout_secs = 60
             .unwrap()
             .is_empty()
     );
+
+    // EventBus 已挂入上下文：默认容量生效，无订阅者时 publish 静默 no-op
+    assert_eq!(ctx.event_bus.capacity(), DEFAULT_CHANNEL_CAPACITY);
+    ctx.event_bus.publish(Event::new(EventKind::ContentCreated));
+    assert_eq!(ctx.event_bus.receiver_count(&EventKind::ContentCreated), 0);
 }
 
 #[tokio::test]
