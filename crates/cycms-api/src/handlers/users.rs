@@ -75,10 +75,7 @@ pub async fn create_user(
         state
             .auth_engine
             .users()
-            .update(
-                &user.id,
-                update_user_row(None, None, None, Some(false)),
-            )
+            .update(&user.id, update_user_row(None, None, None, Some(false)))
             .await?;
     }
     if !request.role_ids.is_empty() {
@@ -115,9 +112,14 @@ pub async fn get_user(
     Path(id): Path<String>,
 ) -> Result<Json<UserResponse>> {
     require_permission(&state, &claims, "system.user.read", None).await?;
-    let user = state.auth_engine.users().find_by_id(&id).await?.ok_or_else(|| Error::NotFound {
-        message: format!("user not found: {id}"),
-    })?;
+    let user = state
+        .auth_engine
+        .users()
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| Error::NotFound {
+            message: format!("user not found: {id}"),
+        })?;
     Ok(Json(to_user_response(&state, user).await?))
 }
 
@@ -137,16 +139,26 @@ pub async fn update_user(
         .users()
         .update(
             &id,
-            update_user_row(request.username, request.email, password_hash, request.is_active),
+            update_user_row(
+                request.username,
+                request.email,
+                password_hash,
+                request.is_active,
+            ),
         )
         .await?;
     if let Some(role_ids) = request.role_ids {
         sync_user_roles(&state, &id, &role_ids).await?;
     }
-    let current = state.auth_engine.users().find_by_id(&id).await?.ok_or_else(|| Error::Internal {
-        message: "updated user not found on read-back".to_owned(),
-        source: None,
-    })?;
+    let current = state
+        .auth_engine
+        .users()
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| Error::Internal {
+            message: "updated user not found on read-back".to_owned(),
+            source: None,
+        })?;
     let _ = user;
     let response = to_user_response(&state, current).await?;
     state.event_bus.publish(
@@ -169,14 +181,19 @@ pub async fn delete_user(
     Path(id): Path<String>,
 ) -> Result<Response> {
     require_permission(&state, &claims, "system.user.manage", None).await?;
-	if claims.sub == id {
+    if claims.sub == id {
         return Err(Error::Conflict {
             message: "cannot delete the current authenticated user".to_owned(),
         });
     }
-    let user = state.auth_engine.users().find_by_id(&id).await?.ok_or_else(|| Error::NotFound {
-        message: format!("user not found: {id}"),
-    })?;
+    let user = state
+        .auth_engine
+        .users()
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| Error::NotFound {
+            message: format!("user not found: {id}"),
+        })?;
     state.auth_engine.users().delete(&id).await?;
     state.event_bus.publish(
         Event::new(EventKind::UserDeleted)

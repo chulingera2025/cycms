@@ -30,10 +30,13 @@ pub fn parse_content_query(params: &HashMap<String, String>) -> Result<ContentQu
         query.populate = comma_values(populate);
     }
     if let Some(status) = params.get("status") {
-        query.status = Some(ContentStatus::from_str(status).map_err(|err| Error::ValidationError {
-            message: err.to_string(),
-            details: None,
-        })?);
+        query.status =
+            Some(
+                ContentStatus::from_str(status).map_err(|err| Error::ValidationError {
+                    message: err.to_string(),
+                    details: None,
+                })?,
+            );
     }
 
     for (key, value) in params {
@@ -60,7 +63,10 @@ pub fn parse_media_query(params: &HashMap<String, String>) -> Result<MediaQuery>
     if let Some(mime_type) = params.get("mime_type").or_else(|| params.get("mimeType")) {
         query.mime_type = Some(mime_type.trim().to_owned());
     }
-    if let Some(filename) = params.get("filename").or_else(|| params.get("filename_contains")) {
+    if let Some(filename) = params
+        .get("filename")
+        .or_else(|| params.get("filename_contains"))
+    {
         query.filename_contains = Some(filename.trim().to_owned());
     }
     if let Some(uploaded_by) = params.get("uploaded_by") {
@@ -185,10 +191,12 @@ fn comma_values(raw: &str) -> Vec<String> {
 }
 
 fn parse_u64(raw: &str, field: &str) -> Result<u64> {
-    raw.trim().parse::<u64>().map_err(|_| Error::ValidationError {
-        message: format!("{field} must be an unsigned integer"),
-        details: None,
-    })
+    raw.trim()
+        .parse::<u64>()
+        .map_err(|_| Error::ValidationError {
+            message: format!("{field} must be an unsigned integer"),
+            details: None,
+        })
 }
 
 fn parse_datetime(raw: &str, field: &str) -> Result<DateTime<Utc>> {

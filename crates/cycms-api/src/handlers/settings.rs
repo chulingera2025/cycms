@@ -76,7 +76,12 @@ pub async fn set_setting(
     Json(request): Json<SettingValueRequest>,
 ) -> Result<Json<cycms_settings::SettingEntry>> {
     require_permission(&state, &claims, "settings.namespace.manage", None).await?;
-    Ok(Json(state.settings_manager.set(&namespace, &key, request.value).await?))
+    Ok(Json(
+        state
+            .settings_manager
+            .set(&namespace, &key, request.value)
+            .await?,
+    ))
 }
 
 pub async fn delete_setting(

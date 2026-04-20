@@ -16,7 +16,8 @@ use cycms_core::Result;
 pub use state::ApiState;
 
 pub fn build_router(state: Arc<ApiState>) -> Router {
-    let auth_layer = middleware::from_fn_with_state(Arc::clone(&state.auth_engine), auth_middleware);
+    let auth_layer =
+        middleware::from_fn_with_state(Arc::clone(&state.auth_engine), auth_middleware);
 
     let auth_router = handlers::auth::public_routes()
         .merge(handlers::auth::protected_routes().route_layer(auth_layer.clone()));
@@ -37,10 +38,10 @@ pub fn build_router(state: Arc<ApiState>) -> Router {
         .nest("/v1", protected_v1);
 
     for (plugin_name, router) in state.native_runtime.all_routes() {
-		api = api.nest_service(&format!("/v1/x/{plugin_name}"), router);
+        api = api.nest_service(&format!("/v1/x/{plugin_name}"), router);
     }
     for (plugin_name, router) in state.wasm_runtime.all_routes() {
-		api = api.nest_service(&format!("/v1/x/{plugin_name}"), router);
+        api = api.nest_service(&format!("/v1/x/{plugin_name}"), router);
     }
 
     Router::new().nest("/api", api.with_state(state))

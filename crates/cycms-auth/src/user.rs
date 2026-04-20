@@ -181,9 +181,12 @@ impl UserRepository {
     /// - `username` / `email` 冲突 → [`cycms_core::Error::Conflict`]
     /// - 其余 DB 错误 → [`cycms_core::Error::Internal`]
     pub async fn update(&self, id: &str, input: UpdateUserRow) -> Result<User> {
-        let existing = self.find_by_id(id).await?.ok_or_else(|| cycms_core::Error::NotFound {
-            message: format!("user not found: {id}"),
-        })?;
+        let existing = self
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| cycms_core::Error::NotFound {
+                message: format!("user not found: {id}"),
+            })?;
 
         let username = input.username.or(Some(existing.username));
         let email = input.email.or(Some(existing.email));

@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use axum::extract::{FromRequestParts, Request, State};
+use axum::http::header::AUTHORIZATION;
 use axum::http::{HeaderMap, request::Parts};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::http::header::AUTHORIZATION;
 use cycms_core::Error;
 
 use crate::claims::AuthClaims;

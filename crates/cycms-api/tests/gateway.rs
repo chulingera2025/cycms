@@ -157,7 +157,12 @@ async fn docs_endpoint_is_public_and_unauthorized_errors_are_unified() {
 
     let response = app
         .clone()
-        .oneshot(Request::builder().uri("/api/docs").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/api/docs")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
@@ -166,7 +171,12 @@ async fn docs_endpoint_is_public_and_unauthorized_errors_are_unified() {
     assert!(body["paths"]["/api/v1/auth/login"].is_object());
 
     let response = app
-        .oneshot(Request::builder().uri("/api/v1/auth/me").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/auth/me")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -182,14 +192,24 @@ async fn register_login_and_me_flow_returns_current_user() {
     let (app, token) = bootstrap_admin(app).await;
 
     let response = app
-        .oneshot(authorized_empty_request(Method::GET, "/api/v1/auth/me", &token))
+        .oneshot(authorized_empty_request(
+            Method::GET,
+            "/api/v1/auth/me",
+            &token,
+        ))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let body = read_json(response).await;
     assert_eq!(body["username"], json!("admin"));
     assert_eq!(body["email"], json!("admin@example.test"));
-    assert!(body["roles"].as_array().unwrap().iter().any(|role| role == "super_admin"));
+    assert!(
+        body["roles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|role| role == "super_admin")
+    );
 }
 
 #[tokio::test]
@@ -226,7 +246,12 @@ async fn creating_content_type_updates_openapi_document() {
     assert_eq!(response.status(), StatusCode::CREATED);
 
     let response = app
-        .oneshot(Request::builder().uri("/api/docs").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/api/docs")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);

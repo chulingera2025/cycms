@@ -16,7 +16,7 @@ mod service;
 pub use error::PermissionError;
 pub use middleware::{PermissionMiddlewareState, require_permission_middleware};
 pub use model::{
-	NewRoleRow, Permission, PermissionDefinition, PermissionScope, Role, UpdateRoleRow,
+    NewRoleRow, Permission, PermissionDefinition, PermissionScope, Role, UpdateRoleRow,
 };
 pub use parser::{ParsedCode, parse_permission_code};
 pub use permission::PermissionRepository;

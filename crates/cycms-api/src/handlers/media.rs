@@ -54,7 +54,11 @@ pub async fn list_media(
     let query = parse_media_query(&params)?;
     let result = state.media_manager.list(&query).await?;
     Ok(Json(MediaListResponse {
-        data: result.data.into_iter().map(MediaAssetResponse::from).collect(),
+        data: result
+            .data
+            .into_iter()
+            .map(MediaAssetResponse::from)
+            .collect(),
         total: result.total,
         page: result.page,
         page_size: result.page_size,
@@ -74,10 +78,14 @@ pub async fn upload_media(
     let mut mime_type: Option<String> = None;
     let mut metadata: Option<serde_json::Value> = None;
 
-    while let Some(field) = multipart.next_field().await.map_err(|error| Error::BadRequest {
-        message: format!("invalid multipart payload: {error}"),
-        source: None,
-    })? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|error| Error::BadRequest {
+            message: format!("invalid multipart payload: {error}"),
+            source: None,
+        })?
+    {
         let field_name = field.name().unwrap_or_default().to_owned();
         match field_name.as_str() {
             "file" => {
@@ -101,10 +109,13 @@ pub async fn upload_media(
                     message: format!("failed to read metadata field: {error}"),
                     source: None,
                 })?;
-                metadata = Some(serde_json::from_str(&raw).map_err(|error| Error::ValidationError {
-                    message: format!("invalid metadata JSON: {error}"),
-                    details: None,
-                })?);
+                metadata =
+                    Some(
+                        serde_json::from_str(&raw).map_err(|error| Error::ValidationError {
+                            message: format!("invalid metadata JSON: {error}"),
+                            details: None,
+                        })?,
+                    );
             }
             "mime_type" => {
                 mime_type = Some(field.text().await.map_err(|error| Error::BadRequest {
@@ -131,7 +142,7 @@ pub async fn upload_media(
             original_filename,
             data,
             mime_type,
-			uploaded_by: claims.sub.clone(),
+            uploaded_by: claims.sub.clone(),
             metadata,
         })
         .await?;
@@ -144,9 +155,13 @@ pub async fn get_media(
     Path(id): Path<String>,
 ) -> Result<Json<MediaAssetResponse>> {
     require_permission(&state, &claims, "media.asset.read", None).await?;
-    let asset = state.media_manager.get(&id).await?.ok_or_else(|| Error::NotFound {
-        message: format!("media asset not found: {id}"),
-    })?;
+    let asset = state
+        .media_manager
+        .get(&id)
+        .await?
+        .ok_or_else(|| Error::NotFound {
+            message: format!("media asset not found: {id}"),
+        })?;
     Ok(Json(MediaAssetResponse::from(asset)))
 }
 
@@ -155,10 +170,20 @@ pub async fn delete_media(
     Authenticated(claims): Authenticated,
     Path(id): Path<String>,
 ) -> Result<Response> {
-    let asset = state.media_manager.get(&id).await?.ok_or_else(|| Error::NotFound {
-        message: format!("media asset not found: {id}"),
-    })?;
-    require_permission(&state, &claims, "media.asset.delete", Some(&asset.uploaded_by)).await?;
+    let asset = state
+        .media_manager
+        .get(&id)
+        .await?
+        .ok_or_else(|| Error::NotFound {
+            message: format!("media asset not found: {id}"),
+        })?;
+    require_permission(
+        &state,
+        &claims,
+        "media.asset.delete",
+        Some(&asset.uploaded_by),
+    )
+    .await?;
     state.media_manager.delete(&id).await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }

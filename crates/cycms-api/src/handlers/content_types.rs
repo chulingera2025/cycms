@@ -74,9 +74,13 @@ pub async fn get_content_type(
     Path(api_id): Path<String>,
 ) -> Result<Json<cycms_content_model::ContentTypeDefinition>> {
     require_permission(&state, &claims, "content.type.read", None).await?;
-    let content_type = state.content_model.get_type(&api_id).await?.ok_or_else(|| Error::NotFound {
-        message: format!("content type `{api_id}` not found"),
-    })?;
+    let content_type = state
+        .content_model
+        .get_type(&api_id)
+        .await?
+        .ok_or_else(|| Error::NotFound {
+            message: format!("content type `{api_id}` not found"),
+        })?;
     Ok(Json(content_type))
 }
 

@@ -117,7 +117,8 @@ impl EventHandler for AuditLogger {
     }
 
     async fn handle(&self, event: Arc<Event>) -> Result<()> {
-        self.insert_entry(AuditEntry::from_event(event.as_ref())).await
+        self.insert_entry(AuditEntry::from_event(event.as_ref()))
+            .await
     }
 }
 
@@ -173,7 +174,10 @@ fn resource_target(event: &Event) -> (&'static str, Option<String>) {
 }
 
 fn payload_string(payload: &Value, key: &str) -> Option<String> {
-    payload.get(key).and_then(Value::as_str).map(ToOwned::to_owned)
+    payload
+        .get(key)
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
 }
 
 fn audit_event_kinds() -> [EventKind; 14] {
@@ -285,11 +289,20 @@ mod tests {
 
         let details: String = row.try_get("details").unwrap();
         assert_eq!(row.try_get::<String, _>("actor_id").unwrap(), actor_id);
-        assert_eq!(row.try_get::<String, _>("action").unwrap(), "content.created");
-        assert_eq!(row.try_get::<String, _>("resource_type").unwrap(), "content");
+        assert_eq!(
+            row.try_get::<String, _>("action").unwrap(),
+            "content.created"
+        );
+        assert_eq!(
+            row.try_get::<String, _>("resource_type").unwrap(),
+            "content"
+        );
         assert_eq!(row.try_get::<String, _>("resource_id").unwrap(), "entry-1");
         assert_eq!(row.try_get::<String, _>("result").unwrap(), "success");
-        assert_eq!(serde_json::from_str::<Value>(&details).unwrap()["content_type_api_id"], "page");
+        assert_eq!(
+            serde_json::from_str::<Value>(&details).unwrap()["content_type_api_id"],
+            "page"
+        );
     }
 
     #[tokio::test]
@@ -299,24 +312,26 @@ mod tests {
         let logger = Arc::new(AuditLogger::new(Arc::clone(&pool)));
         let _handles = logger.subscribe_all(&bus);
 
-        bus.publish(
-            Event::new(EventKind::PluginEnabled).with_payload(json!({
-                "name": "blog",
-                "result": "success"
-            })),
-        );
+        bus.publish(Event::new(EventKind::PluginEnabled).with_payload(json!({
+            "name": "blog",
+            "result": "success"
+        })));
 
         wait_for_audit_rows(&pool, 1).await;
 
         let DatabasePool::Sqlite(inner) = pool.as_ref() else {
             panic!("expected sqlite pool");
         };
-        let row = sqlx::query("SELECT actor_id, resource_type, resource_id FROM audit_logs LIMIT 1")
-            .fetch_one(inner)
-            .await
-            .unwrap();
+        let row =
+            sqlx::query("SELECT actor_id, resource_type, resource_id FROM audit_logs LIMIT 1")
+                .fetch_one(inner)
+                .await
+                .unwrap();
 
-        assert_eq!(row.try_get::<String, _>("actor_id").unwrap(), SYSTEM_ACTOR_ID);
+        assert_eq!(
+            row.try_get::<String, _>("actor_id").unwrap(),
+            SYSTEM_ACTOR_ID
+        );
         assert_eq!(row.try_get::<String, _>("resource_type").unwrap(), "plugin");
         assert_eq!(row.try_get::<String, _>("resource_id").unwrap(), "blog");
     }

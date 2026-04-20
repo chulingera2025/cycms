@@ -57,7 +57,9 @@ pub async fn list_permissions(
     Authenticated(claims): Authenticated,
 ) -> Result<Json<Vec<cycms_permission::Permission>>> {
     require_permission(&state, &claims, "system.role.read", None).await?;
-    Ok(Json(state.permission_engine.permissions().list_all().await?))
+    Ok(Json(
+        state.permission_engine.permissions().list_all().await?,
+    ))
 }
 
 pub async fn create_role(
@@ -78,12 +80,15 @@ pub async fn create_role(
     if !request.permission_ids.is_empty() {
         sync_role_permissions(&state, &role.id, &request.permission_ids).await?;
     }
-    let current = state.permission_engine.roles().find_by_id(&role.id).await?.ok_or_else(|| {
-        Error::Internal {
+    let current = state
+        .permission_engine
+        .roles()
+        .find_by_id(&role.id)
+        .await?
+        .ok_or_else(|| Error::Internal {
             message: "created role not found on read-back".to_owned(),
             source: None,
-        }
-    })?;
+        })?;
     Ok(created_json(to_role_response(&state, current).await?))
 }
 
@@ -93,9 +98,14 @@ pub async fn get_role(
     Path(id): Path<String>,
 ) -> Result<Json<RoleResponse>> {
     require_permission(&state, &claims, "system.role.read", None).await?;
-    let role = state.permission_engine.roles().find_by_id(&id).await?.ok_or_else(|| Error::NotFound {
-        message: format!("role not found: {id}"),
-    })?;
+    let role = state
+        .permission_engine
+        .roles()
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| Error::NotFound {
+            message: format!("role not found: {id}"),
+        })?;
     Ok(Json(to_role_response(&state, role).await?))
 }
 
@@ -114,12 +124,15 @@ pub async fn update_role(
     if let Some(permission_ids) = request.permission_ids {
         sync_role_permissions(&state, &id, &permission_ids).await?;
     }
-    let current = state.permission_engine.roles().find_by_id(&id).await?.ok_or_else(|| {
-        Error::Internal {
+    let current = state
+        .permission_engine
+        .roles()
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| Error::Internal {
             message: "updated role not found on read-back".to_owned(),
             source: None,
-        }
-    })?;
+        })?;
     Ok(Json(to_role_response(&state, current).await?))
 }
 

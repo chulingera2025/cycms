@@ -91,7 +91,7 @@ pub async fn create_entry(
             content_type_api_id: type_api_id,
             data: request.data,
             slug: request.slug,
-			actor_id: claims.sub.clone(),
+            actor_id: claims.sub.clone(),
         })
         .await?;
     Ok(created_json(entry))
@@ -131,7 +131,8 @@ pub async fn update_entry(
     Path((type_api_id, id)): Path<(String, String)>,
     Json(request): Json<UpdateEntryRequest>,
 ) -> Result<Json<ContentEntry>> {
-	let existing = require_owned_entry(&state, &claims, &type_api_id, &id, "content.entry.update").await?;
+    let existing =
+        require_owned_entry(&state, &claims, &type_api_id, &id, "content.entry.update").await?;
     let _ = existing;
     let entry = state
         .content_engine
@@ -141,7 +142,7 @@ pub async fn update_entry(
             UpdateEntryInput {
                 data: request.data,
                 slug: request.slug,
-				actor_id: claims.sub.clone(),
+                actor_id: claims.sub.clone(),
             },
         )
         .await?;
@@ -154,7 +155,8 @@ pub async fn delete_entry(
     Path((type_api_id, id)): Path<(String, String)>,
     Query(query): Query<DeleteEntryQuery>,
 ) -> Result<Response> {
-    let existing = require_owned_entry(&state, &claims, &type_api_id, &id, "content.entry.delete").await?;
+    let existing =
+        require_owned_entry(&state, &claims, &type_api_id, &id, "content.entry.delete").await?;
     let _ = existing;
     state
         .content_engine
@@ -162,7 +164,7 @@ pub async fn delete_entry(
             &type_api_id,
             &id,
             query.mode.as_deref().map(parse_delete_mode).transpose()?,
-			&claims.sub,
+            &claims.sub,
         )
         .await?;
     Ok(StatusCode::NO_CONTENT.into_response())
@@ -193,7 +195,9 @@ pub async fn get_revision(
     Path((type_api_id, id, version)): Path<(String, String, i64)>,
 ) -> Result<Json<Revision>> {
     require_owned_entry(&state, &claims, &type_api_id, &id, "content.entry.read").await?;
-    Ok(Json(state.revision_manager.get_revision(&id, version).await?))
+    Ok(Json(
+        state.revision_manager.get_revision(&id, version).await?,
+    ))
 }
 
 pub async fn rollback_revision(
@@ -204,7 +208,7 @@ pub async fn rollback_revision(
     require_owned_entry(&state, &claims, &type_api_id, &id, "content.entry.update").await?;
     state
         .revision_manager
-		.rollback(&id, version, &claims.sub)
+        .rollback(&id, version, &claims.sub)
         .await?;
     let entry = state
         .content_engine
@@ -225,7 +229,7 @@ pub async fn publish_entry(
     Ok(Json(
         state
             .publish_manager
-			.publish(&id, &type_api_id, &claims.sub)
+            .publish(&id, &type_api_id, &claims.sub)
             .await?,
     ))
 }
@@ -239,14 +243,14 @@ pub async fn unpublish_entry(
     Ok(Json(
         state
             .publish_manager
-			.unpublish(&id, &type_api_id, &claims.sub)
+            .unpublish(&id, &type_api_id, &claims.sub)
             .await?,
     ))
 }
 
 async fn require_owned_entry(
     state: &ApiState,
-	claims: &cycms_auth::AuthClaims,
+    claims: &cycms_auth::AuthClaims,
     type_api_id: &str,
     id: &str,
     code: &str,

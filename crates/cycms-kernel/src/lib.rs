@@ -8,8 +8,8 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use cycms_auth::AuthEngine;
 use cycms_config::AppConfig;
-use cycms_content_engine::ContentEngine;
 use cycms_config::CorsConfig;
+use cycms_content_engine::ContentEngine;
 use cycms_content_model::{ContentModelRegistry, FieldTypeRegistry, seed_default_types};
 use cycms_core::{Error, Result};
 use cycms_db::DatabasePool;
@@ -239,15 +239,20 @@ impl Kernel {
         let app = cycms_api::build_router(api_state).layer(
             ServiceBuilder::new()
                 .layer(middleware::from_fn(request_span_middleware))
-                .layer(middleware::from_fn_with_state(rate_limit, rate_limit_middleware))
+                .layer(middleware::from_fn_with_state(
+                    rate_limit,
+                    rate_limit_middleware,
+                ))
                 .layer(build_cors_layer(&ctx.config.server.cors)?),
         );
 
         let address = format!("{}:{}", ctx.config.server.host, ctx.config.server.port);
-        let listener = TcpListener::bind(&address).await.map_err(|source| Error::Internal {
-            message: format!("failed to bind http listener on {address}: {source}"),
-            source: Some(Box::new(source)),
-        })?;
+        let listener = TcpListener::bind(&address)
+            .await
+            .map_err(|source| Error::Internal {
+                message: format!("failed to bind http listener on {address}: {source}"),
+                source: Some(Box::new(source)),
+            })?;
         info!(address = %address, "cycms http server listening");
 
         axum::serve(listener, app.into_make_service())
@@ -269,7 +274,9 @@ impl Kernel {
         let mut native_plugins = PluginRuntime::loaded_plugins(ctx.native_runtime.as_ref());
         native_plugins.sort();
         for plugin_name in native_plugins.into_iter().rev() {
-            if let Err(error) = PluginRuntime::unload(ctx.native_runtime.as_ref(), &plugin_name).await {
+            if let Err(error) =
+                PluginRuntime::unload(ctx.native_runtime.as_ref(), &plugin_name).await
+            {
                 warn!(plugin = %plugin_name, error = %error, "failed to unload native plugin during shutdown");
             }
             ctx.service_registry.set_unavailable(&plugin_name);
@@ -278,7 +285,8 @@ impl Kernel {
         let mut wasm_plugins = PluginRuntime::loaded_plugins(ctx.wasm_runtime.as_ref());
         wasm_plugins.sort();
         for plugin_name in wasm_plugins.into_iter().rev() {
-            if let Err(error) = PluginRuntime::unload(ctx.wasm_runtime.as_ref(), &plugin_name).await {
+            if let Err(error) = PluginRuntime::unload(ctx.wasm_runtime.as_ref(), &plugin_name).await
+            {
                 warn!(plugin = %plugin_name, error = %error, "failed to unload wasm plugin during shutdown");
             }
             ctx.service_registry.set_unavailable(&plugin_name);
@@ -433,7 +441,9 @@ async fn shutdown_signal() {
 
     #[cfg(unix)]
     let terminate = async {
-        if let Ok(mut signal) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+        if let Ok(mut signal) =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
             signal.recv().await;
         }
     };

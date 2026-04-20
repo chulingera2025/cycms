@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use axum::Json;
 use axum::http::StatusCode;
 use chrono::{DateTime, Utc};
-use cycms_auth::{AuthClaims, User, UpdateUserRow, hash_password};
+use cycms_auth::{AuthClaims, UpdateUserRow, User, hash_password};
 use cycms_core::{Error, Result};
 use cycms_permission::{Permission, Role, UpdateRoleRow};
 use serde::Serialize;
@@ -54,11 +54,21 @@ pub async fn hash_password_for_api(state: &ApiState, password: &str) -> Result<S
 
 pub async fn sync_user_roles(state: &ApiState, user_id: &str, role_ids: &[String]) -> Result<()> {
     let desired: HashSet<String> = role_ids.iter().cloned().collect();
-    let current_roles = state.permission_engine.roles().list_by_user_id(user_id).await?;
+    let current_roles = state
+        .permission_engine
+        .roles()
+        .list_by_user_id(user_id)
+        .await?;
     let current_ids: HashSet<String> = current_roles.iter().map(|role| role.id.clone()).collect();
 
     for role_id in &desired {
-        if state.permission_engine.roles().find_by_id(role_id).await?.is_none() {
+        if state
+            .permission_engine
+            .roles()
+            .find_by_id(role_id)
+            .await?
+            .is_none()
+        {
             return Err(Error::NotFound {
                 message: format!("role not found: {role_id}"),
             });
@@ -90,7 +100,11 @@ pub async fn sync_role_permissions(
     permission_ids: &[String],
 ) -> Result<()> {
     let desired: HashSet<String> = permission_ids.iter().cloned().collect();
-    let current_permissions = state.permission_engine.permissions().list_by_role_id(role_id).await?;
+    let current_permissions = state
+        .permission_engine
+        .permissions()
+        .list_by_role_id(role_id)
+        .await?;
     let current_ids: HashSet<String> = current_permissions
         .iter()
         .map(|permission| permission.id.clone())
@@ -130,7 +144,11 @@ pub async fn sync_role_permissions(
 }
 
 pub async fn to_user_response(state: &ApiState, user: User) -> Result<UserResponse> {
-    let roles = state.permission_engine.roles().list_by_user_id(&user.id).await?;
+    let roles = state
+        .permission_engine
+        .roles()
+        .list_by_user_id(&user.id)
+        .await?;
     Ok(UserResponse {
         id: user.id,
         username: user.username,
@@ -144,7 +162,11 @@ pub async fn to_user_response(state: &ApiState, user: User) -> Result<UserRespon
 }
 
 pub async fn to_role_response(state: &ApiState, role: Role) -> Result<RoleResponse> {
-    let permissions = state.permission_engine.permissions().list_by_role_id(&role.id).await?;
+    let permissions = state
+        .permission_engine
+        .permissions()
+        .list_by_role_id(&role.id)
+        .await?;
     Ok(RoleResponse {
         id: role.id,
         name: role.name,

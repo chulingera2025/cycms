@@ -219,7 +219,12 @@ impl PluginManager {
         Box::pin(self.disable_internal(name, force, actor_id.map(ToOwned::to_owned))).await
     }
 
-    async fn disable_internal(&self, name: &str, force: bool, actor_id: Option<String>) -> Result<()> {
+    async fn disable_internal(
+        &self,
+        name: &str,
+        force: bool,
+        actor_id: Option<String>,
+    ) -> Result<()> {
         let record = self.require_record(name).await?;
         if record.status == PluginStatus::Disabled {
             return Ok(());
@@ -298,7 +303,11 @@ impl PluginManager {
     }
 
     /// 安装插件，并把操作者写入 lifecycle 事件。
-    pub async fn install_as(&self, source: &DiscoveredPlugin, actor_id: Option<&str>) -> Result<PluginInfo> {
+    pub async fn install_as(
+        &self,
+        source: &DiscoveredPlugin,
+        actor_id: Option<&str>,
+    ) -> Result<PluginInfo> {
         let manifest = &source.manifest;
         check_host_compatibility(manifest, &self.cycms_version)?;
         self.check_dependencies_installed(manifest).await?;
@@ -533,8 +542,7 @@ impl PluginManager {
     }
 
     fn publish_event(&self, kind: EventKind, record: &PluginRecord, actor_id: Option<&str>) {
-        let event = Event::new(kind)
-        .with_payload(json!({
+        let event = Event::new(kind).with_payload(json!({
             "name": record.name,
             "version": record.version,
             "kind": record.kind.as_str(),

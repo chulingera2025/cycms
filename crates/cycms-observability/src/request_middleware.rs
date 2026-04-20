@@ -62,9 +62,7 @@ fn incoming_request_id(headers: &axum::http::HeaderMap) -> Option<String> {
         .and_then(|value| value.to_str().ok())
         .map(str::trim)
         .filter(|value| {
-            !value.is_empty()
-                && value.len() <= 128
-                && value.chars().all(|ch| ch.is_ascii_graphic())
+            !value.is_empty() && value.len() <= 128 && value.chars().all(|ch| ch.is_ascii_graphic())
         })
         .map(ToOwned::to_owned)
 }
@@ -123,7 +121,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
-        let header_value = response.headers()[REQUEST_ID_HEADER].to_str().unwrap().to_owned();
+        let header_value = response.headers()[REQUEST_ID_HEADER]
+            .to_str()
+            .unwrap()
+            .to_owned();
 
         let body = response.into_body().collect().await.unwrap().to_bytes();
         let body_value = String::from_utf8(body.to_vec()).unwrap();

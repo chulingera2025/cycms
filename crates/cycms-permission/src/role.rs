@@ -211,7 +211,10 @@ impl RoleRepository {
     /// - 系统角色改名 → [`cycms_core::Error::Conflict`]
     /// - `name` 冲突 → [`cycms_core::Error::Conflict`]
     pub async fn update(&self, id: &str, input: UpdateRoleRow) -> Result<Role> {
-        let existing = self.find_by_id(id).await?.ok_or(PermissionError::RoleNotFound)?;
+        let existing = self
+            .find_by_id(id)
+            .await?
+            .ok_or(PermissionError::RoleNotFound)?;
 
         let normalized_name = input.name.map(|value| value.trim().to_lowercase());
         if existing.is_system
@@ -225,7 +228,9 @@ impl RoleRepository {
         }
 
         if normalized_name.as_deref().is_some_and(str::is_empty) {
-            return Err(PermissionError::InputValidation("role name must not be empty".to_owned()).into());
+            return Err(
+                PermissionError::InputValidation("role name must not be empty".to_owned()).into(),
+            );
         }
 
         let name = normalized_name.unwrap_or(existing.name.clone());
