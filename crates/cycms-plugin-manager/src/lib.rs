@@ -17,7 +17,7 @@ mod resolver;
 mod runtime;
 mod service;
 
-pub use discovery::{DiscoveredPlugin, scan_plugins_dir};
+pub use discovery::{DiscoveredPlugin, discover_plugin_dir, scan_plugins_dir};
 pub use error::PluginManagerError;
 pub use manifest::{
     CompatibilitySpec, DependencySpec, FrontendSpec, PermissionEntry, PermissionsSpec, PluginKind,

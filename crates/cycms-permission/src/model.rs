@@ -70,6 +70,13 @@ pub struct NewRoleRow {
     pub is_system: bool,
 }
 
+/// [`crate::role::RoleRepository::update`] 入参。
+#[derive(Debug, Clone, Default)]
+pub struct UpdateRoleRow {
+    pub name: Option<String>,
+    pub description: Option<Option<String>>,
+}
+
 /// 用于批量注册（种子 / 插件权限点）的权限定义。`source` 由 upsert 调用方统一指定。
 #[derive(Debug, Clone)]
 pub struct PermissionDefinition {

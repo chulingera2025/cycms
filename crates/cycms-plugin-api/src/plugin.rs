@@ -8,6 +8,13 @@ use cycms_events::{EventHandler, EventKind};
 
 use crate::context::PluginContext;
 
+/// 插件路由文档元数据，供任务 18 聚合进 `/api/docs`。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginRouteDoc {
+    pub path: String,
+    pub methods: Vec<String>,
+}
+
 /// Native 插件必须实现的 trait（Req 11.1 / 11.2 / 11.3 / 11.4）。
 ///
 /// 只在 `cycms-plugin-api` 定义 trait 本身与宿主可感知的返回值形状；具体加载、调度、
@@ -37,6 +44,14 @@ pub trait Plugin: Send + Sync {
     /// 插件贡献的 axum 路由（挂载到 `/api/v1/x/{plugin_name}/*`，任务 16.3 实现合并）。
     fn routes(&self) -> Option<Router> {
         None
+    }
+
+    /// 插件对外暴露的路由文档元数据。
+    ///
+    /// `path` 为插件内部相对路径（例如 `/hello`），最终由 `ApiGateway` 挂载到
+    /// `/api/v1/x/{plugin_name}` 前缀下。未提供时文档层会退化为通配描述。
+    fn route_docs(&self) -> Vec<PluginRouteDoc> {
+        Vec::new()
     }
 
     /// 插件提供的事件处理器清单，以 `(EventKind, handler)` 对给出。

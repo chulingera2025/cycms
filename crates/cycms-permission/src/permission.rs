@@ -228,6 +228,87 @@ impl PermissionRepository {
         }
     }
 
+    /// 列出全部权限，按 `(domain, resource, action, scope)` 升序。
+    ///
+    /// # Errors
+    /// DB 错误 → [`cycms_core::Error::Internal`]。
+    pub async fn list_all(&self) -> Result<Vec<Permission>> {
+        match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(PG_SELECT_ALL)
+                    .fetch_all(pool)
+                    .await
+                    .map_err(PermissionError::Database)?;
+                rows.iter()
+                    .map(pg_row_to_permission)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+            DatabasePool::MySql(pool) => {
+                let rows = sqlx::query(MYSQL_SELECT_ALL)
+                    .fetch_all(pool)
+                    .await
+                    .map_err(PermissionError::Database)?;
+                rows.iter()
+                    .map(mysql_row_to_permission)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+            DatabasePool::Sqlite(pool) => {
+                let rows = sqlx::query(SQLITE_SELECT_ALL)
+                    .fetch_all(pool)
+                    .await
+                    .map_err(PermissionError::Database)?;
+                rows.iter()
+                    .map(sqlite_row_to_permission)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+        }
+    }
+
+    /// 列出角色已绑定的全部权限，按 `(domain, resource, action, scope)` 升序。
+    ///
+    /// # Errors
+    /// DB 错误 → [`cycms_core::Error::Internal`]。
+    pub async fn list_by_role_id(&self, role_id: &str) -> Result<Vec<Permission>> {
+        match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(PG_LIST_BY_ROLE_ID)
+                    .bind(role_id)
+                    .fetch_all(pool)
+                    .await
+                    .map_err(PermissionError::Database)?;
+                rows.iter()
+                    .map(pg_row_to_permission)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+            DatabasePool::MySql(pool) => {
+                let rows = sqlx::query(MYSQL_LIST_BY_ROLE_ID)
+                    .bind(role_id)
+                    .fetch_all(pool)
+                    .await
+                    .map_err(PermissionError::Database)?;
+                rows.iter()
+                    .map(mysql_row_to_permission)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+            DatabasePool::Sqlite(pool) => {
+                let rows = sqlx::query(SQLITE_LIST_BY_ROLE_ID)
+                    .bind(role_id)
+                    .fetch_all(pool)
+                    .await
+                    .map_err(PermissionError::Database)?;
+                rows.iter()
+                    .map(sqlite_row_to_permission)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+        }
+    }
+
     /// 幂等批量注册。对每条 [`PermissionDefinition`] 执行 `INSERT ON CONFLICT DO NOTHING`
     /// 语义，随后按 `(domain, resource, action, scope)` 读回，保证返回顺序与入参一致且每条
     /// 对应一行权限记录（新建或既存）。
@@ -351,22 +432,37 @@ impl PermissionRepository {
 const PG_SELECT_WHERE_ID: &str = "SELECT id::TEXT AS id, domain, resource, action, scope, source FROM permissions WHERE id = $1::UUID";
 const PG_FIND_BY_CODE: &str = "SELECT id::TEXT AS id, domain, resource, action, scope, source FROM permissions \
      WHERE domain = $1 AND resource = $2 AND action = $3 AND scope = $4";
+const PG_SELECT_ALL: &str = "SELECT id::TEXT AS id, domain, resource, action, scope, source FROM permissions \
+    ORDER BY domain, resource, action, scope";
 const PG_LIST_BY_SOURCE: &str = "SELECT id::TEXT AS id, domain, resource, action, scope, source FROM permissions \
      WHERE source = $1 ORDER BY domain, resource, action, scope";
+const PG_LIST_BY_ROLE_ID: &str = "SELECT p.id::TEXT AS id, p.domain, p.resource, p.action, p.scope, p.source \
+    FROM permissions p INNER JOIN role_permissions rp ON rp.permission_id = p.id \
+    WHERE rp.role_id = $1::UUID ORDER BY p.domain, p.resource, p.action, p.scope";
 
 const MYSQL_SELECT_WHERE_ID: &str =
     "SELECT id, domain, resource, action, scope, source FROM permissions WHERE id = ?";
 const MYSQL_FIND_BY_CODE: &str = "SELECT id, domain, resource, action, scope, source FROM permissions \
      WHERE domain = ? AND resource = ? AND action = ? AND scope = ?";
+const MYSQL_SELECT_ALL: &str = "SELECT id, domain, resource, action, scope, source FROM permissions \
+    ORDER BY domain, resource, action, scope";
 const MYSQL_LIST_BY_SOURCE: &str = "SELECT id, domain, resource, action, scope, source FROM permissions \
      WHERE source = ? ORDER BY domain, resource, action, scope";
+const MYSQL_LIST_BY_ROLE_ID: &str = "SELECT p.id, p.domain, p.resource, p.action, p.scope, p.source \
+    FROM permissions p INNER JOIN role_permissions rp ON rp.permission_id = p.id \
+    WHERE rp.role_id = ? ORDER BY p.domain, p.resource, p.action, p.scope";
 
 const SQLITE_SELECT_WHERE_ID: &str =
     "SELECT id, domain, resource, action, scope, source FROM permissions WHERE id = ?";
 const SQLITE_FIND_BY_CODE: &str = "SELECT id, domain, resource, action, scope, source FROM permissions \
      WHERE domain = ? AND resource = ? AND action = ? AND scope = ?";
+const SQLITE_SELECT_ALL: &str = "SELECT id, domain, resource, action, scope, source FROM permissions \
+    ORDER BY domain, resource, action, scope";
 const SQLITE_LIST_BY_SOURCE: &str = "SELECT id, domain, resource, action, scope, source FROM permissions \
      WHERE source = ? ORDER BY domain, resource, action, scope";
+const SQLITE_LIST_BY_ROLE_ID: &str = "SELECT p.id, p.domain, p.resource, p.action, p.scope, p.source \
+    FROM permissions p INNER JOIN role_permissions rp ON rp.permission_id = p.id \
+    WHERE rp.role_id = ? ORDER BY p.domain, p.resource, p.action, p.scope";
 
 fn pg_row_to_permission(row: &PgRow) -> std::result::Result<Permission, PermissionError> {
     let scope_str: String = row.try_get("scope").map_err(PermissionError::Database)?;

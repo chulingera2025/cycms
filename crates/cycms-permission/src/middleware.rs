@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
-use axum::Json;
 use axum::extract::{Request, State};
-use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use cycms_auth::AuthClaims;
+use cycms_core::Error;
 
 use crate::service::PermissionEngine;
 
@@ -44,15 +43,13 @@ impl PermissionMiddlewareState {
 ///
 /// `scope=own` 的细粒度校验需要 resource owner 信息，不在此中间件完成；
 /// handler 应在业务逻辑处自行 `engine.require_permission(..., Some(owner_id))`。
-// TODO!!!: 任务 18 实现统一 `IntoResponse for cycms_core::Error` 后，
-//         本函数的 JSON 错误构造应迁移到该统一层。
 pub async fn require_permission_middleware(
     State(state): State<PermissionMiddlewareState>,
     req: Request,
     next: Next,
 ) -> Response {
     let Some(claims) = req.extensions().get::<AuthClaims>().cloned() else {
-        return unauthorized_response("missing authentication context");
+        return unauthorized_response("authentication required");
     };
 
     match state
@@ -67,25 +64,23 @@ pub async fn require_permission_middleware(
 }
 
 fn unauthorized_response(message: &str) -> Response {
-    (
-        StatusCode::UNAUTHORIZED,
-        Json(serde_json::json!({ "code": "unauthorized", "message": message })),
-    )
-        .into_response()
+    Error::Unauthorized {
+        message: message.to_owned(),
+    }
+    .into_response()
 }
 
 fn forbidden_response() -> Response {
-    (
-        StatusCode::FORBIDDEN,
-        Json(serde_json::json!({ "code": "forbidden", "message": "permission denied" })),
-    )
-        .into_response()
+    Error::Forbidden {
+        message: "permission denied".to_owned(),
+    }
+    .into_response()
 }
 
 fn internal_error_response(message: &str) -> Response {
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(serde_json::json!({ "code": "internal_error", "message": message })),
-    )
-        .into_response()
+    Error::Internal {
+        message: message.to_owned(),
+        source: None,
+    }
+    .into_response()
 }

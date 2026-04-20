@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use axum::extract::{FromRequestParts, Request, State};
-use axum::http::{HeaderMap, StatusCode, request::Parts};
+use axum::http::{HeaderMap, request::Parts};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::{Json, http::header::AUTHORIZATION};
+use axum::http::header::AUTHORIZATION;
+use cycms_core::Error;
 
 use crate::claims::AuthClaims;
 use crate::service::AuthEngine;
@@ -20,7 +21,7 @@ pub async fn auth_middleware(
     next: Next,
 ) -> Response {
     let Some(token) = extract_bearer_token(request.headers()) else {
-        return unauthorized_response("missing or invalid authorization header");
+        return unauthorized_response("authentication required");
     };
 
     let Ok(claims) = engine.verify_access(token).await else {
@@ -49,7 +50,7 @@ where
             .get::<AuthClaims>()
             .cloned()
             .map(Authenticated)
-            .ok_or_else(|| unauthorized_response("missing authentication context"))
+            .ok_or_else(|| unauthorized_response("authentication required"))
     }
 }
 
@@ -61,12 +62,9 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {
         .strip_prefix("Bearer ")
 }
 
-// 在任务 18 统一 `IntoResponse for cycms_core::Error` 前，这里使用 crate-local 构造。
-// TODO!!!: 任务 18 实现 IntoResponse for AppError 后，本函数应迁移至统一错误输出层。
 fn unauthorized_response(message: &str) -> Response {
-    let body = Json(serde_json::json!({
-        "code": "unauthorized",
-        "message": message,
-    }));
-    (StatusCode::UNAUTHORIZED, body).into_response()
+    Error::Unauthorized {
+        message: message.to_owned(),
+    }
+    .into_response()
 }

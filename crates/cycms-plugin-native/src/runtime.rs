@@ -20,7 +20,7 @@ use async_trait::async_trait;
 use axum::Router;
 use cycms_core::{Error, Result};
 use cycms_events::SubscriptionHandle;
-use cycms_plugin_api::{Plugin, PluginContext};
+use cycms_plugin_api::{Plugin, PluginContext, PluginRouteDoc};
 use cycms_plugin_manager::{PluginKind, PluginManifest, PluginRuntime};
 use tracing::{info, warn};
 
@@ -38,6 +38,7 @@ struct LoadedPlugin {
     subscriptions: Vec<SubscriptionHandle>,
     service_keys: Vec<String>,
     routes: Option<Router>,
+    route_docs: Vec<PluginRouteDoc>,
 }
 
 impl NativePluginRuntime {
@@ -79,6 +80,18 @@ impl NativePluginRuntime {
         let mut pairs: Vec<(String, Router)> = loaded
             .iter()
             .filter_map(|(name, lp)| lp.routes.clone().map(|r| (name.clone(), r)))
+            .collect();
+        pairs.sort_by(|a, b| a.0.cmp(&b.0));
+        pairs
+    }
+
+    /// 列出所有 loaded 插件声明的路由文档元数据。
+    #[must_use]
+    pub fn all_route_docs(&self) -> Vec<(String, Vec<PluginRouteDoc>)> {
+        let loaded = self.loaded.read().unwrap_or_else(PoisonError::into_inner);
+        let mut pairs: Vec<(String, Vec<PluginRouteDoc>)> = loaded
+            .iter()
+            .map(|(name, lp)| (name.clone(), lp.route_docs.clone()))
             .collect();
         pairs.sort_by(|a, b| a.0.cmp(&b.0));
         pairs
@@ -143,6 +156,7 @@ impl PluginRuntime for NativePluginRuntime {
         }
 
         let routes = plugin.routes();
+        let route_docs = plugin.route_docs();
 
         let mut loaded = self.loaded.write().unwrap_or_else(PoisonError::into_inner);
         loaded.insert(
@@ -153,6 +167,7 @@ impl PluginRuntime for NativePluginRuntime {
                 subscriptions,
                 service_keys,
                 routes,
+                route_docs,
             },
         );
         info!(plugin = %name, "native plugin loaded");
@@ -170,6 +185,7 @@ impl PluginRuntime for NativePluginRuntime {
             subscriptions,
             service_keys,
             routes: _,
+            route_docs: _,
         }) = entry
         else {
             return Ok(());

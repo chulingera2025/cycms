@@ -32,6 +32,15 @@ pub struct NewUserRow {
     pub is_active: bool,
 }
 
+/// [`UserRepository::update`] 入参。`None` 表示保留原值。
+#[derive(Debug, Clone, Default)]
+pub struct UpdateUserRow {
+    pub username: Option<String>,
+    pub email: Option<String>,
+    pub password_hash: Option<String>,
+    pub is_active: Option<bool>,
+}
+
 /// 用户表 CRUD 封装，屏蔽 PG/`MySQL`/`SQLite` 方言差异。
 pub struct UserRepository {
     db: Arc<DatabasePool>,
@@ -124,6 +133,150 @@ impl UserRepository {
                 message: "inserted user not found on read-back".to_owned(),
                 source: None,
             })
+    }
+
+    /// 列出全部用户，按 `username` 升序。
+    ///
+    /// # Errors
+    /// 查询失败时返回 [`cycms_core::Error::Internal`]。
+    pub async fn list(&self) -> Result<Vec<User>> {
+        match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(PG_SELECT_ALL)
+                    .fetch_all(pool)
+                    .await
+                    .map_err(AuthError::Database)?;
+                rows.iter()
+                    .map(pg_row_to_user)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+            DatabasePool::MySql(pool) => {
+                let rows = sqlx::query(MYSQL_SELECT_ALL)
+                    .fetch_all(pool)
+                    .await
+                    .map_err(AuthError::Database)?;
+                rows.iter()
+                    .map(mysql_row_to_user)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+            DatabasePool::Sqlite(pool) => {
+                let rows = sqlx::query(SQLITE_SELECT_ALL)
+                    .fetch_all(pool)
+                    .await
+                    .map_err(AuthError::Database)?;
+                rows.iter()
+                    .map(sqlite_row_to_user)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+        }
+    }
+
+    /// 更新用户基础字段。未提供的字段保持原值不变。
+    ///
+    /// # Errors
+    /// - 用户不存在 → [`cycms_core::Error::NotFound`]
+    /// - `username` / `email` 冲突 → [`cycms_core::Error::Conflict`]
+    /// - 其余 DB 错误 → [`cycms_core::Error::Internal`]
+    pub async fn update(&self, id: &str, input: UpdateUserRow) -> Result<User> {
+        let existing = self.find_by_id(id).await?.ok_or_else(|| cycms_core::Error::NotFound {
+            message: format!("user not found: {id}"),
+        })?;
+
+        let username = input.username.or(Some(existing.username));
+        let email = input.email.or(Some(existing.email));
+        let password_hash = input.password_hash.or(Some(existing.password_hash));
+        let is_active = input.is_active.or(Some(existing.is_active));
+
+        match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(
+                    "UPDATE users SET username = $2, email = $3, password_hash = $4, \
+                     is_active = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $1::UUID",
+                )
+                .bind(id)
+                .bind(&username)
+                .bind(&email)
+                .bind(&password_hash)
+                .bind(is_active)
+                .execute(pool)
+                .await
+                .map_err(map_unique_violation)?;
+            }
+            DatabasePool::MySql(pool) => {
+                sqlx::query(
+                    "UPDATE users SET username = ?, email = ?, password_hash = ?, \
+                     is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                )
+                .bind(&username)
+                .bind(&email)
+                .bind(&password_hash)
+                .bind(is_active)
+                .bind(id)
+                .execute(pool)
+                .await
+                .map_err(map_unique_violation)?;
+            }
+            DatabasePool::Sqlite(pool) => {
+                sqlx::query(
+                    "UPDATE users SET username = ?, email = ?, password_hash = ?, \
+                     is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                )
+                .bind(&username)
+                .bind(&email)
+                .bind(&password_hash)
+                .bind(is_active)
+                .bind(id)
+                .execute(pool)
+                .await
+                .map_err(map_unique_violation)?;
+            }
+        }
+
+        self.find_by_id(id)
+            .await?
+            .ok_or_else(|| cycms_core::Error::Internal {
+                message: "updated user not found on read-back".to_owned(),
+                source: None,
+            })
+    }
+
+    /// 删除用户。
+    ///
+    /// # Errors
+    /// - 用户不存在 → [`cycms_core::Error::NotFound`]
+    /// - DB 错误 → [`cycms_core::Error::Internal`]
+    pub async fn delete(&self, id: &str) -> Result<()> {
+        let affected = match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => sqlx::query("DELETE FROM users WHERE id = $1::UUID")
+                .bind(id)
+                .execute(pool)
+                .await
+                .map_err(AuthError::Database)?
+                .rows_affected(),
+            DatabasePool::MySql(pool) => sqlx::query("DELETE FROM users WHERE id = ?")
+                .bind(id)
+                .execute(pool)
+                .await
+                .map_err(AuthError::Database)?
+                .rows_affected(),
+            DatabasePool::Sqlite(pool) => sqlx::query("DELETE FROM users WHERE id = ?")
+                .bind(id)
+                .execute(pool)
+                .await
+                .map_err(AuthError::Database)?
+                .rows_affected(),
+        };
+
+        if affected == 0 {
+            return Err(cycms_core::Error::NotFound {
+                message: format!("user not found: {id}"),
+            });
+        }
+
+        Ok(())
     }
 
     /// 按 username 精确查找。
@@ -244,16 +397,22 @@ impl UserRepository {
     }
 }
 
+const PG_SELECT_ALL: &str = "SELECT id::TEXT AS id, username, email, password_hash, is_active, created_at, updated_at \
+    FROM users ORDER BY username";
 const PG_SELECT_WHERE_USERNAME: &str = "SELECT id::TEXT AS id, username, email, password_hash, is_active, created_at, updated_at \
      FROM users WHERE username = $1";
 const PG_SELECT_WHERE_ID: &str = "SELECT id::TEXT AS id, username, email, password_hash, is_active, created_at, updated_at \
      FROM users WHERE id = $1::UUID";
 
+const MYSQL_SELECT_ALL: &str = "SELECT id, username, email, password_hash, is_active, created_at, updated_at \
+    FROM users ORDER BY username";
 const MYSQL_SELECT_WHERE_USERNAME: &str = "SELECT id, username, email, password_hash, is_active, created_at, updated_at \
      FROM users WHERE username = ?";
 const MYSQL_SELECT_WHERE_ID: &str = "SELECT id, username, email, password_hash, is_active, created_at, updated_at \
      FROM users WHERE id = ?";
 
+const SQLITE_SELECT_ALL: &str = "SELECT id, username, email, password_hash, is_active, created_at, updated_at \
+    FROM users ORDER BY username";
 const SQLITE_SELECT_WHERE_USERNAME: &str = "SELECT id, username, email, password_hash, is_active, created_at, updated_at \
      FROM users WHERE username = ?";
 const SQLITE_SELECT_WHERE_ID: &str = "SELECT id, username, email, password_hash, is_active, created_at, updated_at \

@@ -10,7 +10,7 @@ use sqlx::sqlite::SqliteRow;
 use uuid::Uuid;
 
 use crate::error::PermissionError;
-use crate::model::{NewRoleRow, Role};
+use crate::model::{NewRoleRow, Role, UpdateRoleRow};
 
 /// 角色表 CRUD + 角色-权限绑定 + 用户-角色绑定，屏蔽 PG/`MySQL`/`SQLite` 方言差异。
 pub struct RoleRepository {
@@ -196,6 +196,138 @@ impl RoleRepository {
                     .fetch_all(pool)
                     .await
                     .map_err(PermissionError::Database)?;
+                rows.iter()
+                    .map(sqlite_row_to_role)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+        }
+    }
+
+    /// 更新角色基础字段。系统角色允许改描述，但不允许改名。
+    ///
+    /// # Errors
+    /// - 角色不存在 → [`cycms_core::Error::NotFound`]
+    /// - 系统角色改名 → [`cycms_core::Error::Conflict`]
+    /// - `name` 冲突 → [`cycms_core::Error::Conflict`]
+    pub async fn update(&self, id: &str, input: UpdateRoleRow) -> Result<Role> {
+        let existing = self.find_by_id(id).await?.ok_or(PermissionError::RoleNotFound)?;
+
+        let normalized_name = input.name.map(|value| value.trim().to_lowercase());
+        if existing.is_system
+            && normalized_name
+                .as_deref()
+                .is_some_and(|value| value != existing.name)
+        {
+            return Err(cycms_core::Error::Conflict {
+                message: format!("system role {} cannot be renamed", existing.name),
+            });
+        }
+
+        if normalized_name.as_deref().is_some_and(str::is_empty) {
+            return Err(PermissionError::InputValidation("role name must not be empty".to_owned()).into());
+        }
+
+        let name = normalized_name.unwrap_or(existing.name.clone());
+        let description_set = input.description.is_some();
+        let description_value = input.description.unwrap_or(existing.description.clone());
+
+        match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(
+                    "UPDATE roles SET name = $2, \
+                     description = CASE WHEN $3 THEN $4 ELSE description END WHERE id = $1::UUID",
+                )
+                .bind(id)
+                .bind(&name)
+                .bind(description_set)
+                .bind(&description_value)
+                .execute(pool)
+                .await
+                .map_err(map_unique_violation)?;
+            }
+            DatabasePool::MySql(pool) => {
+                sqlx::query(
+                    "UPDATE roles SET name = ?, \
+                     description = CASE WHEN ? THEN ? ELSE description END WHERE id = ?",
+                )
+                .bind(&name)
+                .bind(description_set)
+                .bind(&description_value)
+                .bind(id)
+                .execute(pool)
+                .await
+                .map_err(map_unique_violation)?;
+            }
+            DatabasePool::Sqlite(pool) => {
+                sqlx::query(
+                    "UPDATE roles SET name = ?, \
+                     description = CASE WHEN ? THEN ? ELSE description END WHERE id = ?",
+                )
+                .bind(&name)
+                .bind(description_set)
+                .bind(&description_value)
+                .bind(id)
+                .execute(pool)
+                .await
+                .map_err(map_unique_violation)?;
+            }
+        }
+
+        self.find_by_id(id)
+            .await?
+            .ok_or_else(|| cycms_core::Error::Internal {
+                message: "updated role not found on read-back".to_owned(),
+                source: None,
+            })
+    }
+
+    /// 列出某个用户绑定的角色，按角色名升序。
+    ///
+    /// # Errors
+    /// DB 错误 → [`cycms_core::Error::Internal`]。
+    pub async fn list_by_user_id(&self, user_id: &str) -> Result<Vec<Role>> {
+        match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(
+                    "SELECT r.id::TEXT AS id, r.name, r.description, r.is_system, r.created_at \
+                     FROM roles r INNER JOIN user_roles ur ON ur.role_id = r.id \
+                     WHERE ur.user_id = $1::UUID ORDER BY r.name",
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await
+                .map_err(PermissionError::Database)?;
+                rows.iter()
+                    .map(pg_row_to_role)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+            DatabasePool::MySql(pool) => {
+                let rows = sqlx::query(
+                    "SELECT r.id, r.name, r.description, r.is_system, r.created_at \
+                     FROM roles r INNER JOIN user_roles ur ON ur.role_id = r.id \
+                     WHERE ur.user_id = ? ORDER BY r.name",
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await
+                .map_err(PermissionError::Database)?;
+                rows.iter()
+                    .map(mysql_row_to_role)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+            DatabasePool::Sqlite(pool) => {
+                let rows = sqlx::query(
+                    "SELECT r.id, r.name, r.description, r.is_system, r.created_at \
+                     FROM roles r INNER JOIN user_roles ur ON ur.role_id = r.id \
+                     WHERE ur.user_id = ? ORDER BY r.name",
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await
+                .map_err(PermissionError::Database)?;
                 rows.iter()
                     .map(sqlite_row_to_role)
                     .collect::<std::result::Result<Vec<_>, _>>()

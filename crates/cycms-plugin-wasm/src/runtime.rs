@@ -35,7 +35,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use cycms_core::{Error, Result};
 use cycms_events::{Event, EventBus, EventHandler, EventKind, SubscriptionHandle};
-use cycms_plugin_api::PluginContext;
+use cycms_plugin_api::{PluginContext, PluginRouteDoc};
 use cycms_plugin_manager::{PluginKind, PluginManifest, PluginRuntime};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex as AsyncMutex;
@@ -62,6 +62,7 @@ struct LoadedWasmPlugin {
     /// 由 [`compose_router`] 根据 guest 的 `route.register` 合成的 axum `Router`；没有
     /// 路由登记时为 `None`。由 `ApiGateway`（任务 18）合并到主路由表。
     routes: Option<Router>,
+    route_docs: Vec<PluginRouteDoc>,
 }
 
 impl WasmPluginRuntime {
@@ -103,6 +104,18 @@ impl WasmPluginRuntime {
         let mut pairs: Vec<(String, Router)> = loaded
             .iter()
             .filter_map(|(name, lp)| lp.routes.clone().map(|r| (name.clone(), r)))
+            .collect();
+        pairs.sort_by(|a, b| a.0.cmp(&b.0));
+        pairs
+    }
+
+    /// 列出当前已加载 wasm 插件的路由文档元数据。
+    #[must_use]
+    pub fn all_route_docs(&self) -> Vec<(String, Vec<PluginRouteDoc>)> {
+        let loaded = self.loaded.read().unwrap_or_else(PoisonError::into_inner);
+        let mut pairs: Vec<(String, Vec<PluginRouteDoc>)> = loaded
+            .iter()
+            .map(|(name, lp)| (name.clone(), lp.route_docs.clone()))
             .collect();
         pairs.sort_by(|a, b| a.0.cmp(&b.0));
         pairs
@@ -173,6 +186,7 @@ impl PluginRuntime for WasmPluginRuntime {
 
         let subscribed = store.data().subscribed_event_kinds.clone();
         let pending_routes = store.data().pending_routes.clone();
+        let route_docs = normalize_route_docs(&pending_routes);
         let store_shared = Arc::new(AsyncMutex::new(store));
 
         let mut subscriptions = Vec::with_capacity(subscribed.len());
@@ -206,6 +220,7 @@ impl PluginRuntime for WasmPluginRuntime {
                 bindings,
                 subscriptions,
                 routes,
+                route_docs,
             },
         );
         info!(plugin = %plugin_name, "wasm plugin loaded");
@@ -222,6 +237,7 @@ impl PluginRuntime for WasmPluginRuntime {
             bindings,
             subscriptions,
             routes: _,
+            route_docs: _,
         }) = entry
         else {
             return Ok(());
@@ -423,6 +439,24 @@ fn compose_router(
         router = router.route(&path, routing::on(filter, handler));
     }
     router
+}
+
+fn normalize_route_docs(pending_routes: &[(String, String)]) -> Vec<PluginRouteDoc> {
+    let mut by_path: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (path, method) in pending_routes {
+        let methods = by_path.entry(path.clone()).or_default();
+        if !methods.iter().any(|existing| existing == method) {
+            methods.push(method.clone());
+        }
+    }
+
+    by_path
+        .into_iter()
+        .map(|(path, mut methods)| {
+            methods.sort();
+            PluginRouteDoc { path, methods }
+        })
+        .collect()
 }
 
 async fn proxy_handle(

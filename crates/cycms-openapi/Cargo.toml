@@ -5,5 +5,14 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[dependencies]
+serde_json = { workspace = true }
+utoipa = { workspace = true }
+cycms-core = { workspace = true }
+cycms-content-model = { workspace = true }
+cycms-plugin-api = { workspace = true }
+cycms-plugin-native = { workspace = true }
+cycms-plugin-wasm = { workspace = true }
+
 [lints]
 workspace = true

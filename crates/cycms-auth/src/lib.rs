@@ -21,4 +21,4 @@ pub use revoked::RevokedTokenRepository;
 pub use seed::CreateUserInput;
 pub use service::{AuthEngine, LoginRequest};
 pub use token::{IssuedTokens, JwtCodec, TokenPair};
-pub use user::{NewUserRow, User, UserRepository};
+pub use user::{NewUserRow, UpdateUserRow, User, UserRepository};

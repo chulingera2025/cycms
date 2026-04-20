@@ -18,6 +18,31 @@ pub struct DiscoveredPlugin {
     pub manifest: PluginManifest,
 }
 
+/// 从指定插件目录解析单个插件。
+///
+/// 要求目录下存在 `plugin.toml`。
+///
+/// # Errors
+/// - 缺少 `plugin.toml` → [`PluginManagerError::Discovery`]
+/// - 读取或解析失败 → 对应错误
+pub fn discover_plugin_dir(directory: &Path) -> Result<DiscoveredPlugin, PluginManagerError> {
+    let manifest_path = directory.join("plugin.toml");
+    if !manifest_path.exists() {
+        return Err(PluginManagerError::Discovery(format!(
+            "plugin manifest not found: {}",
+            manifest_path.display()
+        )));
+    }
+    let text = fs::read_to_string(&manifest_path).map_err(|e| {
+        PluginManagerError::Discovery(format!("read {}: {e}", manifest_path.display()))
+    })?;
+    let manifest = PluginManifest::from_toml_str(&text)?;
+    Ok(DiscoveredPlugin {
+        directory: directory.to_path_buf(),
+        manifest,
+    })
+}
+
 /// 扫描 `plugins.directory` 下的所有子目录并解析 `plugin.toml`。
 ///
 /// 解析通过的条目按 `manifest.plugin.name` 字典序返回。
@@ -44,18 +69,9 @@ pub fn scan_plugins_dir(root: &Path) -> Result<Vec<DiscoveredPlugin>, PluginMana
             continue;
         }
         let plugin_dir = entry.path();
-        let manifest_path = plugin_dir.join("plugin.toml");
-        if !manifest_path.exists() {
-            continue;
+        if plugin_dir.join("plugin.toml").exists() {
+            discovered.push(discover_plugin_dir(&plugin_dir)?);
         }
-        let text = fs::read_to_string(&manifest_path).map_err(|e| {
-            PluginManagerError::Discovery(format!("read {}: {e}", manifest_path.display()))
-        })?;
-        let manifest = PluginManifest::from_toml_str(&text)?;
-        discovered.push(DiscoveredPlugin {
-            directory: plugin_dir,
-            manifest,
-        });
     }
 
     discovered.sort_by(|a, b| a.manifest.plugin.name.cmp(&b.manifest.plugin.name));

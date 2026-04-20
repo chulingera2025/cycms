@@ -17,5 +17,5 @@ mod registry;
 
 pub use context::PluginContext;
 pub use error::RegistryError;
-pub use plugin::Plugin;
+pub use plugin::{Plugin, PluginRouteDoc};
 pub use registry::ServiceRegistry;
