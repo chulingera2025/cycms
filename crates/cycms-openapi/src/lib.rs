@@ -318,13 +318,7 @@ fn add_dynamic_content_paths(
 
     add_dynamic_content_collection_paths(paths, type_api_id, entry_schema, &base);
     add_dynamic_content_detail_paths(paths, type_api_id, entry_schema, &detail);
-    add_dynamic_content_publication_paths(
-        paths,
-        type_api_id,
-        entry_schema,
-        &publish,
-        &unpublish,
-    );
+    add_dynamic_content_publication_paths(paths, type_api_id, entry_schema, &publish, &unpublish);
     add_dynamic_content_revision_paths(
         paths,
         type_api_id,

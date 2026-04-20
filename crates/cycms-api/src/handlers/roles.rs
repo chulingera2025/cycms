@@ -12,8 +12,8 @@ use cycms_permission::NewRoleRow;
 use serde::Deserialize;
 
 use crate::common::{
-    NullablePatch, RoleResponse, created_json, require_permission, sync_role_permissions, to_role_response,
-    update_role_row,
+    NullablePatch, RoleResponse, created_json, require_permission, sync_role_permissions,
+    to_role_response, update_role_row,
 };
 use crate::state::ApiState;
 

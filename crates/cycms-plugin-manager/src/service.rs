@@ -200,12 +200,12 @@ impl PluginManager {
 
         let order = topological_order(&manifests)?;
         for plugin_name in order {
-            let record = enabled_records.get(&plugin_name).ok_or_else(|| Error::Internal {
-                message: format!(
-                    "enabled plugin record missing during restore: {plugin_name}"
-                ),
-                source: None,
-            })?;
+            let record = enabled_records
+                .get(&plugin_name)
+                .ok_or_else(|| Error::Internal {
+                    message: format!("enabled plugin record missing during restore: {plugin_name}"),
+                    source: None,
+                })?;
             self.activate_record(record, false, false, None).await?;
         }
 

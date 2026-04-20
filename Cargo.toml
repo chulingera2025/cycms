@@ -66,6 +66,7 @@ rand = "0.8"
 async-trait = "0.1"
 infer = "0.19"
 tempfile = "3"
+clap = { version = "4.5", features = ["derive"] }
 
 cycms-core = { path = "crates/cycms-core" }
 cycms-kernel = { path = "crates/cycms-kernel" }

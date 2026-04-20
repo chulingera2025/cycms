@@ -112,7 +112,7 @@ impl AuditLogger {
 
 #[async_trait]
 impl EventHandler for AuditLogger {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "audit_logger"
     }
 
