@@ -11,7 +11,7 @@
 //!   任一步失败直接返回错误，依赖调用方显式 uninstall 清理。
 //!   TODO!!! 任务后续（v0.2）引入 saga 模式实现失败自动回滚。
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, PoisonError, RwLock};
 
@@ -30,7 +30,7 @@ use crate::discovery::DiscoveredPlugin;
 use crate::manifest::{PluginKind, PluginManifest};
 use crate::model::{NewPluginRow, PluginRecord, PluginStatus};
 use crate::repository::PluginRepository;
-use crate::resolver::{check_host_compatibility, reverse_dependencies};
+use crate::resolver::{check_host_compatibility, reverse_dependencies, topological_order};
 use crate::runtime::PluginRuntime;
 
 /// `PluginManager` 构造入参，封装 Kernel 侧的不可变配置。
@@ -200,24 +200,38 @@ impl PluginManager {
     /// - runtime.load 返回的任何错误
     pub async fn enable(&self, name: &str) -> Result<()> {
         let record = self.require_record(name).await?;
-        if record.status == PluginStatus::Enabled {
-            return Ok(());
+        self.activate_record(&record, true, true).await
+    }
+
+    /// 根据数据库中的持久化状态恢复所有已启用插件。
+    ///
+    /// 该方法在进程启动时使用：按依赖拓扑顺序加载 runtime，但不重复写 DB 状态、
+    /// 不重复发布 lifecycle 事件。
+    ///
+    /// # Errors
+    /// 任一已启用插件的 manifest 解析、依赖校验或 runtime load 失败时返回错误。
+    pub async fn restore_enabled_plugins(&self) -> Result<()> {
+        let records = self.repository.list().await?;
+        let mut manifests = Vec::new();
+        let mut enabled_records = BTreeMap::<String, PluginRecord>::new();
+
+        for record in records {
+            if record.status != PluginStatus::Enabled {
+                continue;
+            }
+            let manifest = Self::manifest_from_record(&record)?;
+            manifests.push(manifest);
+            enabled_records.insert(record.name.clone(), record);
         }
-        let manifest = Self::manifest_from_record(&record)?;
-        self.check_dependencies_enabled(&manifest).await?;
 
-        let runtime = self.runtime_for(record.kind)?;
-        let entry_path = self.resolve_entry_path(&record.name, &manifest);
-        runtime
-            .load(&manifest, &entry_path, Arc::clone(&self.plugin_context))
-            .await?;
+        let order = topological_order(&manifests)?;
+        for plugin_name in order {
+            let record = enabled_records
+                .get(&plugin_name)
+                .expect("topological order must refer to enabled plugin records");
+            self.activate_record(record, false, false).await?;
+        }
 
-        self.repository
-            .update_status(name, PluginStatus::Enabled)
-            .await?;
-        self.service_registry.set_available(name);
-        info!(plugin = %name, "plugin enabled");
-        self.publish_event(EventKind::PluginEnabled, &record);
         Ok(())
     }
 
@@ -312,6 +326,45 @@ impl PluginManager {
     pub async fn list(&self) -> Result<Vec<PluginInfo>> {
         let records = self.repository.list().await?;
         Ok(records.iter().map(PluginInfo::from_record).collect())
+    }
+
+    async fn activate_record(
+        &self,
+        record: &PluginRecord,
+        persist_status: bool,
+        emit_event: bool,
+    ) -> Result<()> {
+        let manifest = Self::manifest_from_record(record)?;
+        self.check_dependencies_enabled(&manifest).await?;
+
+        let runtime = self.runtime_for(record.kind)?;
+        let already_loaded = runtime
+            .loaded_plugins()
+            .into_iter()
+            .any(|loaded| loaded == record.name);
+        if !already_loaded {
+            let entry_path = self.resolve_entry_path(&record.name, &manifest);
+            runtime
+                .load(&manifest, &entry_path, Arc::clone(&self.plugin_context))
+                .await?;
+        }
+
+        if persist_status && record.status != PluginStatus::Enabled {
+            self.repository
+                .update_status(&record.name, PluginStatus::Enabled)
+                .await?;
+        }
+
+        self.service_registry.set_available(&record.name);
+
+        if emit_event {
+            info!(plugin = %record.name, "plugin enabled");
+            self.publish_event(EventKind::PluginEnabled, record);
+        } else if !already_loaded {
+            info!(plugin = %record.name, "plugin restored from persisted enabled state");
+        }
+
+        Ok(())
     }
 
     async fn require_record(&self, name: &str) -> Result<PluginRecord> {

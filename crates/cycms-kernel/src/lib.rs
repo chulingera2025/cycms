@@ -1,9 +1,15 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
+use axum::extract::{Request, State};
+use axum::http::{HeaderValue, Method, header};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use cycms_auth::AuthEngine;
 use cycms_config::AppConfig;
 use cycms_content_engine::ContentEngine;
+use cycms_config::CorsConfig;
 use cycms_content_model::{ContentModelRegistry, FieldTypeRegistry, seed_default_types};
 use cycms_core::{Error, Result};
 use cycms_db::DatabasePool;
@@ -19,6 +25,13 @@ use cycms_publish::PublishManager;
 use cycms_revision::RevisionManager;
 use cycms_settings::SettingsManager;
 use semver::Version;
+use tokio::net::TcpListener;
+use tokio::sync::Mutex;
+use tower::ServiceBuilder;
+use tower_http::LatencyUnit;
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+use tracing::{Level, info, warn};
 
 /// 全局应用上下文，Kernel bootstrap 后在所有组件间共享。
 #[non_exhaustive]
@@ -183,6 +196,9 @@ impl Kernel {
             },
         ));
         service_registry.register("system.plugin_manager", Arc::clone(&plugin_manager))?;
+        if migrations_applied {
+            plugin_manager.restore_enabled_plugins().await?;
+        }
 
         Ok(AppContext {
             config: Arc::new(self.config.clone()),
@@ -207,20 +223,229 @@ impl Kernel {
     ///
     /// # Errors
     /// 端口绑定失败或运行时错误时返回错误。
-    #[allow(clippy::unused_async)]
     pub async fn serve(self) -> Result<()> {
-        // TODO!!!: 任务 18 实现 axum HTTP 服务器启动
-        todo!("TODO!!!: 任务 18 实现 HTTP 服务启动")
+        let migrations_dir = default_system_migrations_dir();
+        let ctx = self.bootstrap(Some(&migrations_dir)).await?;
+        let api_state = build_api_state(&ctx);
+        let rate_limit = Arc::new(RateLimitState::new(
+            ctx.config.server.rate_limit.requests_per_minute,
+            ctx.config.server.rate_limit.sensitive_requests_per_minute,
+        ));
+        let app = cycms_api::build_router(api_state).layer(
+            ServiceBuilder::new()
+                .layer(
+                    TraceLayer::new_for_http()
+                        .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+                        .on_response(
+                            DefaultOnResponse::new()
+                                .level(Level::INFO)
+                                .latency_unit(LatencyUnit::Micros),
+                        ),
+                )
+                .layer(middleware::from_fn_with_state(rate_limit, rate_limit_middleware))
+                .layer(build_cors_layer(&ctx.config.server.cors)?),
+        );
+
+        let address = format!("{}:{}", ctx.config.server.host, ctx.config.server.port);
+        let listener = TcpListener::bind(&address).await.map_err(|source| Error::Internal {
+            message: format!("failed to bind http listener on {address}: {source}"),
+            source: Some(Box::new(source)),
+        })?;
+        info!(address = %address, "cycms http server listening");
+
+        axum::serve(listener, app.into_make_service())
+            .with_graceful_shutdown(shutdown_signal())
+            .await
+            .map_err(|source| Error::Internal {
+                message: format!("http server terminated with error: {source}"),
+                source: Some(Box::new(source)),
+            })?;
+
+        self.shutdown(&ctx).await
     }
 
     /// 优雅关闭所有子系统。
     ///
     /// # Errors
     /// 关闭过程中出现不可恢复错误时返回错误。
-    #[allow(clippy::unused_async)]
-    pub async fn shutdown(&self, _ctx: &AppContext) -> Result<()> {
-        // TODO!!!: 任务 18 实现优雅关闭逻辑
-        todo!("TODO!!!: 任务 18 实现优雅关闭")
+    pub async fn shutdown(&self, ctx: &AppContext) -> Result<()> {
+        let mut native_plugins = PluginRuntime::loaded_plugins(ctx.native_runtime.as_ref());
+        native_plugins.sort();
+        for plugin_name in native_plugins.into_iter().rev() {
+            if let Err(error) = PluginRuntime::unload(ctx.native_runtime.as_ref(), &plugin_name).await {
+                warn!(plugin = %plugin_name, error = %error, "failed to unload native plugin during shutdown");
+            }
+            ctx.service_registry.set_unavailable(&plugin_name);
+        }
+
+        let mut wasm_plugins = PluginRuntime::loaded_plugins(ctx.wasm_runtime.as_ref());
+        wasm_plugins.sort();
+        for plugin_name in wasm_plugins.into_iter().rev() {
+            if let Err(error) = PluginRuntime::unload(ctx.wasm_runtime.as_ref(), &plugin_name).await {
+                warn!(plugin = %plugin_name, error = %error, "failed to unload wasm plugin during shutdown");
+            }
+            ctx.service_registry.set_unavailable(&plugin_name);
+        }
+
+        info!("cycms kernel shutdown complete");
+        Ok(())
+    }
+}
+
+struct RateLimitState {
+    general_limit: u32,
+    sensitive_limit: u32,
+    general: Mutex<WindowCounter>,
+    sensitive: Mutex<WindowCounter>,
+}
+
+struct WindowCounter {
+    window_started_at: Instant,
+    count: u32,
+}
+
+impl RateLimitState {
+    fn new(general_limit: u32, sensitive_limit: u32) -> Self {
+        let now = Instant::now();
+        Self {
+            general_limit,
+            sensitive_limit,
+            general: Mutex::new(WindowCounter {
+                window_started_at: now,
+                count: 0,
+            }),
+            sensitive: Mutex::new(WindowCounter {
+                window_started_at: now,
+                count: 0,
+            }),
+        }
+    }
+
+    async fn check(&self, sensitive: bool) -> Result<()> {
+        let (limit, state, label) = if sensitive {
+            (self.sensitive_limit, &self.sensitive, "sensitive")
+        } else {
+            (self.general_limit, &self.general, "general")
+        };
+
+        if limit == 0 {
+            return Ok(());
+        }
+
+        let mut counter = state.lock().await;
+        if counter.window_started_at.elapsed() >= Duration::from_secs(60) {
+            counter.window_started_at = Instant::now();
+            counter.count = 0;
+        }
+
+        if counter.count >= limit {
+            return Err(Error::RateLimited {
+                message: format!("{label} request limit exceeded: {limit} per minute"),
+            });
+        }
+
+        counter.count += 1;
+        Ok(())
+    }
+}
+
+fn build_api_state(ctx: &AppContext) -> Arc<cycms_api::ApiState> {
+    Arc::new(cycms_api::ApiState::new(
+        Arc::clone(&ctx.config),
+        Arc::clone(&ctx.auth_engine),
+        Arc::clone(&ctx.permission_engine),
+        Arc::clone(&ctx.content_model),
+        Arc::clone(&ctx.content_engine),
+        Arc::clone(&ctx.revision_manager),
+        Arc::clone(&ctx.publish_manager),
+        Arc::clone(&ctx.media_manager),
+        Arc::clone(&ctx.plugin_manager),
+        Arc::clone(&ctx.settings_manager),
+        Arc::clone(&ctx.service_registry),
+        Arc::clone(&ctx.native_runtime),
+        Arc::clone(&ctx.wasm_runtime),
+    ))
+}
+
+fn build_cors_layer(config: &CorsConfig) -> Result<CorsLayer> {
+    let mut cors = CorsLayer::new()
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
+        .allow_credentials(config.allow_credentials)
+        .max_age(Duration::from_secs(config.max_age_secs));
+
+    if config.allowed_origins.iter().any(|origin| origin == "*") {
+        cors = cors.allow_origin(Any);
+    } else {
+        let origins = config
+            .allowed_origins
+            .iter()
+            .map(|origin| {
+                HeaderValue::from_str(origin).map_err(|source| Error::BadRequest {
+                    message: format!("invalid CORS origin configured: {origin}"),
+                    source: Some(Box::new(source)),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        cors = cors.allow_origin(AllowOrigin::list(origins));
+    }
+
+    Ok(cors)
+}
+
+fn default_system_migrations_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cycms-migrate/migrations/system")
+}
+
+async fn rate_limit_middleware(
+    State(rate_limit): State<Arc<RateLimitState>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if request.method() == Method::OPTIONS {
+        return next.run(request).await;
+    }
+
+    let sensitive = is_sensitive_path(request.uri().path());
+    if let Err(error) = rate_limit.check(sensitive).await {
+        return error.into_response();
+    }
+
+    next.run(request).await
+}
+
+fn is_sensitive_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/api/v1/auth/login" | "/api/v1/auth/register" | "/api/v1/auth/refresh"
+    )
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        if let Ok(mut signal) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            signal.recv().await;
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {}
+        _ = terminate => {}
     }
 }
 
