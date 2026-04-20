@@ -168,11 +168,11 @@
   - [x] 18.12 编写 API 端到端测试
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
 
-- [ ] 19. 实现 Observability（cycms-observability）
-  - [ ] 19.1 实现 tracing 初始化（JSON/Pretty 格式切换，按级别过滤）
-  - [ ] 19.2 实现请求级 span 中间件（request_id, method, path, status, latency）
-  - [ ] 19.3 实现 AuditLogger：关键业务操作写入 audit_logs 表（who/what/when/result）
-  - [ ] 19.4 编写日志格式与审计日志写入的验证测试
+- [x] 19. 实现 Observability（cycms-observability）
+  - [x] 19.1 实现 tracing 初始化（JSON/Pretty 格式切换，按级别过滤）
+  - [x] 19.2 实现请求级 span 中间件（request_id, method, path, status, latency）
+  - [x] 19.3 实现 AuditLogger：关键业务操作写入 audit_logs 表（who/what/when/result）
+  - [x] 19.4 编写日志格式与审计日志写入的验证测试
   - _Requirements: 16.1, 16.2_
 
 - [ ] 20. 实现 CLI（cycms-cli）
