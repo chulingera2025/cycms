@@ -195,8 +195,7 @@ async fn fresh_harness() -> Harness {
     ));
 
     let runtime = Arc::new(NativePluginRuntime::new());
-    let runtime_as_trait: Arc<dyn PluginRuntime> =
-        Arc::clone(&runtime) as Arc<dyn PluginRuntime>;
+    let runtime_as_trait: Arc<dyn PluginRuntime> = Arc::clone(&runtime) as Arc<dyn PluginRuntime>;
 
     let manager = PluginManager::new(
         Arc::clone(&pool),
@@ -284,7 +283,9 @@ async fn lifecycle_subscribes_events_and_exposes_services_and_routes() {
     assert_eq!(all_routes[0].0, "echo");
 
     // 事件订阅生效：发布 UserCreated 会命中 handler
-    harness.event_bus.publish(Event::new(EventKind::UserCreated));
+    harness
+        .event_bus
+        .publish(Event::new(EventKind::UserCreated));
     wait_until(&event_counter, 1).await;
 
     // disable: on_disable 触发 + 订阅 abort + 服务注销
@@ -294,7 +295,9 @@ async fn lifecycle_subscribes_events_and_exposes_services_and_routes() {
     assert!(harness.runtime.routes_of("echo").is_none());
 
     // 再次发布事件不应再递增（留些时间让分发尝试投递）
-    harness.event_bus.publish(Event::new(EventKind::UserCreated));
+    harness
+        .event_bus
+        .publish(Event::new(EventKind::UserCreated));
     tokio::time::sleep(Duration::from_millis(20)).await;
     assert_eq!(event_counter.load(Ordering::SeqCst), 1);
 
@@ -311,7 +314,9 @@ async fn lifecycle_subscribes_events_and_exposes_services_and_routes() {
     // re-enable：同一 runtime 下允许再次拉起，事件计数能从断点继续递增
     harness.manager.enable("echo").await.unwrap();
     assert!(enabled_flag.load(Ordering::SeqCst));
-    harness.event_bus.publish(Event::new(EventKind::UserCreated));
+    harness
+        .event_bus
+        .publish(Event::new(EventKind::UserCreated));
     wait_until(&event_counter, 2).await;
 
     // uninstall：runtime 状态清空；plugin 记录清空

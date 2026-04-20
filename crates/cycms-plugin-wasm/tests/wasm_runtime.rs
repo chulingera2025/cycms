@@ -77,8 +77,7 @@ async fn fresh_harness() -> Harness {
     let settings_manager = Arc::new(SettingsManager::new(Arc::clone(&pool)));
     let service_registry = Arc::new(ServiceRegistry::new());
 
-    let auth_engine =
-        Arc::new(AuthEngine::new(Arc::clone(&pool), AuthConfig::default()).unwrap());
+    let auth_engine = Arc::new(AuthEngine::new(Arc::clone(&pool), AuthConfig::default()).unwrap());
     let field_type_registry = Arc::new(FieldTypeRegistry::new());
     let content_model = Arc::new(ContentModelRegistry::new(
         Arc::clone(&pool),
@@ -146,7 +145,11 @@ async fn load_calls_on_enable_and_host_functions() {
     assert!(val.is_some(), "settings key 'enabled' should exist");
 
     // on-enable 调用了 kv.set("init", "done") — namespace 为 plugin:hello:kv
-    let kv_val = harness.settings.get("plugin:hello:kv", "init").await.unwrap();
+    let kv_val = harness
+        .settings
+        .get("plugin:hello:kv", "init")
+        .await
+        .unwrap();
     assert!(kv_val.is_some(), "kv key 'init' should exist");
 
     // loaded_plugins 含 hello

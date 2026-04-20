@@ -11,9 +11,7 @@
 
 #![allow(clippy::option_option)]
 
-use cycms_content_engine::{
-    ContentQuery, ContentStatus, CreateEntryInput, UpdateEntryInput,
-};
+use cycms_content_engine::{ContentQuery, ContentStatus, CreateEntryInput, UpdateEntryInput};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -178,7 +176,11 @@ impl Host for HostState {
         entry_id: String,
     ) -> wasmtime::Result<Result<(), String>> {
         let actor = self.default_actor();
-        match self.content.delete(&type_api_id, &entry_id, None, &actor).await {
+        match self
+            .content
+            .delete(&type_api_id, &entry_id, None, &actor)
+            .await
+        {
             Ok(()) => Ok(Ok(())),
             Err(e) => Ok(Err(format!("content.delete: {e}"))),
         }

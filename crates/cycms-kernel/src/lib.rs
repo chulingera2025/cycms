@@ -14,6 +14,7 @@ use cycms_permission::PermissionEngine;
 use cycms_plugin_api::{PluginContext, ServiceRegistry};
 use cycms_plugin_manager::{PluginManager, PluginManagerConfig, PluginRuntime};
 use cycms_plugin_native::NativePluginRuntime;
+use cycms_plugin_wasm::WasmPluginRuntime;
 use cycms_publish::PublishManager;
 use cycms_revision::RevisionManager;
 use cycms_settings::SettingsManager;
@@ -52,6 +53,10 @@ pub struct AppContext {
     /// 宿主代码 / CLI 在 `serve` 前通过 `native_runtime.register_plugin(...)` 交付
     /// `Arc<dyn Plugin>`，`PluginManager::enable` 时由此 runtime 执行生命周期钩子。
     pub native_runtime: Arc<NativePluginRuntime>,
+    /// 任务 17：Wasm Component Model 插件运行时。
+    /// `PluginManager::enable` 时由此 runtime 从 `.wasm` 加载 guest 并执行生命周期
+    /// 钩子；`all_routes()` 暴露 guest 注册的路由供 API Gateway 合并。
+    pub wasm_runtime: Arc<WasmPluginRuntime>,
 }
 
 /// 应用生命周期管理入口。
@@ -160,6 +165,9 @@ impl Kernel {
         let native_runtime = Arc::new(NativePluginRuntime::new());
         let native_as_trait: Arc<dyn PluginRuntime> =
             Arc::clone(&native_runtime) as Arc<dyn PluginRuntime>;
+        let wasm_runtime = Arc::new(WasmPluginRuntime::new()?);
+        let wasm_as_trait: Arc<dyn PluginRuntime> =
+            Arc::clone(&wasm_runtime) as Arc<dyn PluginRuntime>;
         let plugin_manager = Arc::new(PluginManager::new(
             Arc::clone(&db),
             Arc::clone(&migration_engine),
@@ -171,8 +179,7 @@ impl Kernel {
             PluginManagerConfig {
                 cycms_version,
                 plugins_root,
-                // Native runtime 已就位（任务 16）；Wasm runtime（任务 17）后续并列追加
-                runtimes: vec![native_as_trait],
+                runtimes: vec![native_as_trait, wasm_as_trait],
             },
         ));
         service_registry.register("system.plugin_manager", Arc::clone(&plugin_manager))?;
@@ -192,6 +199,7 @@ impl Kernel {
             media_manager,
             plugin_manager,
             native_runtime,
+            wasm_runtime,
         })
     }
 

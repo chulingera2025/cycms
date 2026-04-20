@@ -754,6 +754,7 @@ dependencies = [
  "cycms-plugin-api",
  "cycms-plugin-manager",
  "cycms-plugin-native",
+ "cycms-plugin-wasm",
  "cycms-publish",
  "cycms-revision",
  "cycms-settings",

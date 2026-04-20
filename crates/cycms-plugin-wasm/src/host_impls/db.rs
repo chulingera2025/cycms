@@ -136,12 +136,12 @@ impl Host for HostState {
         };
         let rows_result = match &*self.db {
             DatabasePool::Sqlite(p) => sqlite_query(p, &sql, &params).await,
-            DatabasePool::Postgres(_) => Err(
-                "db.query: postgres dialect not yet implemented in v0.1 (TODO!!!)".to_owned(),
-            ),
-            DatabasePool::MySql(_) => Err(
-                "db.query: mysql dialect not yet implemented in v0.1 (TODO!!!)".to_owned(),
-            ),
+            DatabasePool::Postgres(_) => {
+                Err("db.query: postgres dialect not yet implemented in v0.1 (TODO!!!)".to_owned())
+            }
+            DatabasePool::MySql(_) => {
+                Err("db.query: mysql dialect not yet implemented in v0.1 (TODO!!!)".to_owned())
+            }
         };
         match rows_result {
             Ok(rows) => match serde_json::to_string(&rows) {

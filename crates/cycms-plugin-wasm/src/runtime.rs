@@ -132,10 +132,12 @@ impl PluginRuntime for WasmPluginRuntime {
             }
         }
 
-        let wasm_bytes = tokio::fs::read(entry_path).await.map_err(|e| Error::Internal {
-            message: format!("read wasm {}: {e}", entry_path.display()),
-            source: None,
-        })?;
+        let wasm_bytes = tokio::fs::read(entry_path)
+            .await
+            .map_err(|e| Error::Internal {
+                message: format!("read wasm {}: {e}", entry_path.display()),
+                source: None,
+            })?;
         let component =
             Component::from_binary(&self.engine, &wasm_bytes).map_err(|e| Error::PluginError {
                 message: format!("wasm component compile: {e}"),
@@ -497,7 +499,10 @@ fn parse_wasm_response(
     };
     let mut builder = Response::builder().status(resp.status);
     for (k, v) in resp.headers {
-        match (HeaderName::from_bytes(k.as_bytes()), HeaderValue::from_str(&v)) {
+        match (
+            HeaderName::from_bytes(k.as_bytes()),
+            HeaderValue::from_str(&v),
+        ) {
             (Ok(name), Ok(val)) => {
                 builder = builder.header(name, val);
             }
