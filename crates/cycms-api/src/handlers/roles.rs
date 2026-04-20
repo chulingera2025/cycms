@@ -12,7 +12,7 @@ use cycms_permission::NewRoleRow;
 use serde::Deserialize;
 
 use crate::common::{
-    RoleResponse, created_json, require_permission, sync_role_permissions, to_role_response,
+    NullablePatch, RoleResponse, created_json, require_permission, sync_role_permissions, to_role_response,
     update_role_row,
 };
 use crate::state::ApiState;
@@ -35,7 +35,8 @@ pub struct CreateRoleRequest {
 #[derive(Debug, Deserialize, Default)]
 pub struct UpdateRoleRequest {
     pub name: Option<String>,
-    pub description: Option<Option<String>>,
+    #[serde(default)]
+    pub description: NullablePatch<String>,
     pub permission_ids: Option<Vec<String>>,
 }
 

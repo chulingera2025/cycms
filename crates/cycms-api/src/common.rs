@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use cycms_auth::{AuthClaims, UpdateUserRow, User, hash_password};
 use cycms_core::{Error, Result};
 use cycms_permission::{Permission, Role, UpdateRoleRow};
-use serde::Serialize;
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::state::ApiState;
 
@@ -30,6 +30,30 @@ pub struct RoleResponse {
     pub is_system: bool,
     pub created_at: DateTime<Utc>,
     pub permissions: Vec<Permission>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum NullablePatch<T> {
+    #[default]
+    Missing,
+    Null,
+    Value(T),
+}
+
+impl<'de, T> Deserialize<'de> for NullablePatch<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(match Option::<Option<T>>::deserialize(deserializer)? {
+            None => Self::Missing,
+            Some(None) => Self::Null,
+            Some(Some(value)) => Self::Value(value),
+        })
+    }
 }
 
 pub fn created_json<T: Serialize>(value: T) -> (StatusCode, Json<T>) {
@@ -191,6 +215,13 @@ pub fn update_user_row(
     }
 }
 
-pub fn update_role_row(name: Option<String>, description: Option<Option<String>>) -> UpdateRoleRow {
-    UpdateRoleRow { name, description }
+pub fn update_role_row(name: Option<String>, description: NullablePatch<String>) -> UpdateRoleRow {
+    UpdateRoleRow {
+        name,
+        description: match description {
+            NullablePatch::Missing => None,
+            NullablePatch::Null => Some(None),
+            NullablePatch::Value(value) => Some(Some(value)),
+        },
+    }
 }

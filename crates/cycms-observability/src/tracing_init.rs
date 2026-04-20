@@ -6,6 +6,10 @@ use tracing_subscriber::fmt;
 use tracing_subscriber::fmt::writer::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 
+/// 根据配置初始化全局 tracing dispatcher。
+///
+/// # Errors
+/// 当日志级别过滤器无效时返回错误。
 pub fn init_tracing(config: &ObservabilityConfig) -> Result<()> {
     let dispatch = build_dispatch(config, std::io::stdout)?;
     let _ = tracing::dispatcher::set_global_default(dispatch);

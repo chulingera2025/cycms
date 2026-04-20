@@ -12,11 +12,11 @@ fn system_migrations_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cycms-migrate/migrations/system")
 }
 
-/// 内存 SQLite + 系统迁移 + 临时存储目录。
+/// 内存 `SQLite` + 系统迁移 + 临时存储目录。
 struct Setup {
     pool: Arc<DatabasePool>,
     manager: MediaManager,
-    _storage_dir: TempDir,
+    storage_dir: TempDir,
 }
 
 async fn make_setup() -> Setup {
@@ -53,7 +53,7 @@ async fn make_setup() -> Setup {
     Setup {
         pool,
         manager,
-        _storage_dir: storage_dir,
+        storage_dir,
     }
 }
 
@@ -108,12 +108,12 @@ async fn upload_stores_file_and_returns_asset() {
     assert_eq!(asset.mime_type, "image/png");
     assert_eq!(asset.original_filename, "avatar.png");
     assert_eq!(asset.filename, "avatar.png");
-    assert_eq!(asset.size, data.len() as i64);
+    assert_eq!(asset.size, i64::try_from(data.len()).unwrap());
     assert_eq!(asset.uploaded_by, "user-01");
     assert!(!asset.storage_path.is_empty());
 
     // 文件确实落盘了
-    let file_path = s._storage_dir.path().join(&asset.storage_path);
+    let file_path = s.storage_dir.path().join(&asset.storage_path);
     assert!(file_path.exists(), "stored file must exist on disk");
 }
 
@@ -364,7 +364,7 @@ async fn delete_unreferenced_removes_file_and_db_record() {
         .await
         .unwrap();
 
-    let file_path = s._storage_dir.path().join(&asset.storage_path);
+    let file_path = s.storage_dir.path().join(&asset.storage_path);
     assert!(file_path.exists());
 
     s.manager.delete(&asset.id).await.expect("delete");

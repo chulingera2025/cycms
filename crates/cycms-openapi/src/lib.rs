@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    borrow::Borrow,
+    collections::{HashMap, HashSet},
+};
 
 use cycms_content_model::ContentModelRegistry;
 use cycms_core::Result;
@@ -17,6 +20,10 @@ macro_rules! map {
 	}};
 }
 
+/// 构建当前运行时可见的 `OpenAPI` 3.1 文档。
+///
+/// # Errors
+/// 读取内容类型列表或把内容模型转换为 JSON Schema 失败时返回错误。
 pub async fn build_openapi_json(
     content_model: &ContentModelRegistry,
     native_runtime: &NativePluginRuntime,
@@ -309,9 +316,36 @@ fn add_dynamic_content_paths(
     let publish = format!("{detail}/publish");
     let unpublish = format!("{detail}/unpublish");
 
+    add_dynamic_content_collection_paths(paths, type_api_id, entry_schema, &base);
+    add_dynamic_content_detail_paths(paths, type_api_id, entry_schema, &detail);
+    add_dynamic_content_publication_paths(
+        paths,
+        type_api_id,
+        entry_schema,
+        &publish,
+        &unpublish,
+    );
+    add_dynamic_content_revision_paths(
+        paths,
+        type_api_id,
+        entry_schema,
+        &revisions,
+        &revision,
+        &rollback,
+    );
+}
+
+fn add_dynamic_content_collection_paths(
+    paths: &mut Map<String, Value>,
+    type_api_id: &str,
+    entry_schema: &str,
+    base: &str,
+) {
+    let fields_schema_name = format!("ContentFields{}", pascal_case(type_api_id));
+
     insert_operation(
         paths,
-        &base,
+        base,
         "get",
         operation(
             &format!("列出 {type_api_id} 内容"),
@@ -339,7 +373,7 @@ fn add_dynamic_content_paths(
     );
     insert_operation(
         paths,
-        &base,
+        base,
         "post",
         operation(
             &format!("创建 {type_api_id} 内容"),
@@ -352,7 +386,7 @@ fn add_dynamic_content_paths(
                     "required": ["data"],
                     "properties": {
                         "slug": nullable(json!({ "type": "string" })),
-                        "data": schema_ref(&format!("ContentFields{}", pascal_case(type_api_id)))
+                        "data": schema_ref(&fields_schema_name)
                     }
                 } } }
             })),
@@ -362,9 +396,19 @@ fn add_dynamic_content_paths(
             },
         ),
     );
+}
+
+fn add_dynamic_content_detail_paths(
+    paths: &mut Map<String, Value>,
+    type_api_id: &str,
+    entry_schema: &str,
+    detail: &str,
+) {
+    let fields_schema_name = format!("ContentFields{}", pascal_case(type_api_id));
+
     insert_operation(
         paths,
-        &detail,
+        detail,
         "get",
         operation(
             &format!("获取单个 {type_api_id} 内容"),
@@ -383,7 +427,7 @@ fn add_dynamic_content_paths(
     );
     insert_operation(
         paths,
-        &detail,
+        detail,
         "put",
         operation(
             &format!("更新 {type_api_id} 内容"),
@@ -395,7 +439,7 @@ fn add_dynamic_content_paths(
                     "type": "object",
                     "properties": {
                         "slug": nullable(json!({ "type": "string" })),
-                        "data": schema_ref(&format!("ContentFields{}", pascal_case(type_api_id)))
+                        "data": schema_ref(&fields_schema_name)
                     }
                 } } }
             })),
@@ -407,7 +451,7 @@ fn add_dynamic_content_paths(
     );
     insert_operation(
         paths,
-        &detail,
+        detail,
         "delete",
         operation(
             &format!("删除 {type_api_id} 内容"),
@@ -423,9 +467,18 @@ fn add_dynamic_content_paths(
             },
         ),
     );
+}
+
+fn add_dynamic_content_publication_paths(
+    paths: &mut Map<String, Value>,
+    type_api_id: &str,
+    entry_schema: &str,
+    publish: &str,
+    unpublish: &str,
+) {
     insert_operation(
         paths,
-        &publish,
+        publish,
         "post",
         operation(
             &format!("发布 {type_api_id} 内容"),
@@ -440,7 +493,7 @@ fn add_dynamic_content_paths(
     );
     insert_operation(
         paths,
-        &unpublish,
+        unpublish,
         "post",
         operation(
             &format!("撤回 {type_api_id} 内容"),
@@ -453,9 +506,19 @@ fn add_dynamic_content_paths(
             },
         ),
     );
+}
+
+fn add_dynamic_content_revision_paths(
+    paths: &mut Map<String, Value>,
+    type_api_id: &str,
+    entry_schema: &str,
+    revisions: &str,
+    revision: &str,
+    rollback: &str,
+) {
     insert_operation(
         paths,
-        &revisions,
+        revisions,
         "get",
         operation(
             &format!("列出 {type_api_id} 版本历史"),
@@ -474,7 +537,7 @@ fn add_dynamic_content_paths(
     );
     insert_operation(
         paths,
-        &revision,
+        revision,
         "get",
         operation(
             &format!("获取 {type_api_id} 指定版本"),
@@ -492,7 +555,7 @@ fn add_dynamic_content_paths(
     );
     insert_operation(
         paths,
-        &rollback,
+        rollback,
         "post",
         operation(
             &format!("回滚 {type_api_id} 到指定版本"),
@@ -793,6 +856,11 @@ fn add_settings_paths(paths: &mut Map<String, Value>) {
 }
 
 fn add_user_role_paths(paths: &mut Map<String, Value>) {
+    add_user_paths(paths);
+    add_role_paths(paths);
+}
+
+fn add_user_paths(paths: &mut Map<String, Value>) {
     insert_operation(
         paths,
         "/api/v1/users",
@@ -893,7 +961,9 @@ fn add_user_role_paths(paths: &mut Map<String, Value>) {
             },
         ),
     );
+}
 
+fn add_role_paths(paths: &mut Map<String, Value>) {
     insert_operation(
         paths,
         "/api/v1/roles",
@@ -1032,7 +1102,7 @@ fn add_plugin_paths(
                     &full_path,
                     &method,
                     operation(
-                        &format!("插件 {} 路由", plugin_name),
+                        &format!("插件 {plugin_name} 路由"),
                         "plugins",
                         false,
                         None,
@@ -1060,7 +1130,7 @@ fn add_generic_plugin_path(paths: &mut Map<String, Value>, plugin_name: &str) {
         &format!("/api/v1/x/{plugin_name}/{{path}}"),
         "get",
         operation(
-            &format!("插件 {} 通配路由", plugin_name),
+            &format!("插件 {plugin_name} 通配路由"),
             "plugins",
             false,
             None,
@@ -1074,6 +1144,16 @@ fn add_generic_plugin_path(paths: &mut Map<String, Value>, plugin_name: &str) {
 
 fn static_schemas() -> Map<String, Value> {
     let mut schemas = Map::<String, Value>::new();
+
+    add_core_schemas(&mut schemas);
+    add_content_type_schemas(&mut schemas);
+    add_media_plugin_setting_schemas(&mut schemas);
+    add_revision_schemas(&mut schemas);
+
+    schemas
+}
+
+fn add_core_schemas(schemas: &mut Map<String, Value>) {
     schemas.insert(
         "ErrorResponse".to_owned(),
         json!({
@@ -1150,6 +1230,9 @@ fn static_schemas() -> Map<String, Value> {
             }
         }),
     );
+}
+
+fn add_content_type_schemas(schemas: &mut Map<String, Value>) {
     schemas.insert("FieldDefinition".to_owned(), json!({
 		"type": "object",
 		"required": ["name", "api_id", "field_type", "required", "unique", "validations", "position"],
@@ -1220,6 +1303,9 @@ fn static_schemas() -> Map<String, Value> {
             }
         }),
     );
+}
+
+fn add_media_plugin_setting_schemas(schemas: &mut Map<String, Value>) {
     schemas.insert("MediaAssetResponse".to_owned(), json!({
 		"type": "object",
 		"required": ["id", "filename", "original_filename", "mime_type", "size", "storage_path", "uploaded_by", "created_at"],
@@ -1290,6 +1376,9 @@ fn static_schemas() -> Map<String, Value> {
             }
         }),
     );
+}
+
+fn add_revision_schemas(schemas: &mut Map<String, Value>) {
     schemas.insert("Revision".to_owned(), json!({
 		"type": "object",
 		"required": ["id", "content_entry_id", "version_number", "snapshot", "created_by", "created_at"],
@@ -1298,7 +1387,7 @@ fn static_schemas() -> Map<String, Value> {
 			"content_entry_id": { "type": "string", "format": "uuid" },
 			"version_number": { "type": "integer" },
 			"snapshot": {},
-			"change_summary": nullable(json!({ "type": "string" })),
+            "change_summary": nullable(json!({ "type": "string" })),
 			"created_by": { "type": "string", "format": "uuid" },
 			"created_at": { "type": "string", "format": "date-time" }
 		}
@@ -1316,7 +1405,6 @@ fn static_schemas() -> Map<String, Value> {
             }
         }),
     );
-    schemas
 }
 
 fn content_entry_schema(fields_schema_name: &str) -> Value {
@@ -1352,10 +1440,10 @@ fn content_entry_schema(fields_schema_name: &str) -> Value {
     })
 }
 
-fn nullable(schema: Value) -> Value {
+fn nullable(schema: impl Borrow<Value>) -> Value {
     json!({
         "anyOf": [
-            schema,
+            schema.borrow().clone(),
             { "type": "null" }
         ]
     })
@@ -1395,12 +1483,12 @@ fn insert_operation(paths: &mut Map<String, Value>, path: &str, method: &str, op
     object.insert(method.trim().to_ascii_lowercase(), operation);
 }
 
-fn json_response(schema: Value, description: &str) -> Value {
+fn json_response(schema: impl Borrow<Value>, description: &str) -> Value {
     json!({
         "description": description,
         "content": {
             "application/json": {
-                "schema": schema
+                "schema": schema.borrow().clone()
             }
         }
     })

@@ -15,7 +15,7 @@ use cycms_revision::Revision;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::common::{created_json, require_permission};
+use crate::common::{NullablePatch, created_json, require_permission};
 use crate::query::parse_content_query;
 use crate::state::ApiState;
 
@@ -45,7 +45,8 @@ pub struct CreateEntryRequest {
 #[derive(Debug, Deserialize, Default)]
 pub struct UpdateEntryRequest {
     pub data: Option<Value>,
-    pub slug: Option<Option<String>>,
+    #[serde(default)]
+    pub slug: NullablePatch<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -141,7 +142,11 @@ pub async fn update_entry(
             &id,
             UpdateEntryInput {
                 data: request.data,
-                slug: request.slug,
+                slug: match request.slug {
+                    NullablePatch::Missing => None,
+                    NullablePatch::Null => Some(None),
+                    NullablePatch::Value(value) => Some(Some(value)),
+                },
                 actor_id: claims.sub.clone(),
             },
         )

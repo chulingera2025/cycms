@@ -166,6 +166,12 @@ impl PluginManager {
     }
 
     /// 启用已安装插件，并把操作者写入 lifecycle 事件。
+    ///
+    /// # Errors
+    /// - [`cycms_core::Error::NotFound`]：未找到插件
+    /// - [`cycms_core::Error::ValidationError`]：依赖未启用
+    /// - [`cycms_core::Error::PluginError`]：对应 `kind` 无已注册 runtime
+    /// - runtime.load 返回的任何错误
     pub async fn enable_as(&self, name: &str, actor_id: Option<&str>) -> Result<()> {
         let record = self.require_record(name).await?;
         self.activate_record(&record, true, true, actor_id).await
@@ -194,9 +200,12 @@ impl PluginManager {
 
         let order = topological_order(&manifests)?;
         for plugin_name in order {
-            let record = enabled_records
-                .get(&plugin_name)
-                .expect("topological order must refer to enabled plugin records");
+            let record = enabled_records.get(&plugin_name).ok_or_else(|| Error::Internal {
+                message: format!(
+                    "enabled plugin record missing during restore: {plugin_name}"
+                ),
+                source: None,
+            })?;
             self.activate_record(record, false, false, None).await?;
         }
 
@@ -215,6 +224,11 @@ impl PluginManager {
     }
 
     /// 禁用已启用插件，并把操作者写入 lifecycle 事件。
+    ///
+    /// # Errors
+    /// - [`cycms_core::Error::NotFound`]：未找到插件
+    /// - [`cycms_core::Error::Conflict`]：存在依赖方且未开启 `force`
+    /// - runtime.unload 返回的任何错误
     pub async fn disable_as(&self, name: &str, force: bool, actor_id: Option<&str>) -> Result<()> {
         Box::pin(self.disable_internal(name, force, actor_id.map(ToOwned::to_owned))).await
     }
@@ -267,6 +281,9 @@ impl PluginManager {
     }
 
     /// 卸载插件，并把操作者写入 lifecycle 事件。
+    ///
+    /// # Errors
+    /// 插件不存在、级联禁用失败、down migration 失败、仓库删除失败时返回错误。
     pub async fn uninstall_as(&self, name: &str, actor_id: Option<&str>) -> Result<()> {
         let record = self.require_record(name).await?;
         if record.status == PluginStatus::Enabled {
@@ -303,6 +320,11 @@ impl PluginManager {
     }
 
     /// 安装插件，并把操作者写入 lifecycle 事件。
+    ///
+    /// # Errors
+    /// - [`cycms_core::Error::ValidationError`]：宿主不兼容 / 依赖缺失 / 版本不匹配
+    /// - [`cycms_core::Error::Conflict`]：同名插件已安装
+    /// - [`cycms_core::Error::Internal`]：DB / 迁移 / manifest 序列化失败
     pub async fn install_as(
         &self,
         source: &DiscoveredPlugin,

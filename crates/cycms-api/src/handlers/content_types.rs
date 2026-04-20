@@ -10,7 +10,7 @@ use cycms_content_model::{ContentTypeKind, FieldDefinition};
 use cycms_core::{Error, Result};
 use serde::Deserialize;
 
-use crate::common::{created_json, require_permission};
+use crate::common::{NullablePatch, created_json, require_permission};
 use crate::state::ApiState;
 
 pub fn routes() -> Router<Arc<ApiState>> {
@@ -36,7 +36,8 @@ pub struct CreateContentTypeRequest {
 #[derive(Debug, Deserialize, Default)]
 pub struct UpdateContentTypeRequest {
     pub name: Option<String>,
-    pub description: Option<Option<String>>,
+    #[serde(default)]
+    pub description: NullablePatch<String>,
     pub kind: Option<ContentTypeKind>,
     pub fields: Option<Vec<FieldDefinition>>,
 }
@@ -97,7 +98,11 @@ pub async fn update_content_type(
             &api_id,
             cycms_content_model::UpdateContentTypeInput {
                 name: request.name,
-                description: request.description,
+                description: match request.description {
+                    NullablePatch::Missing => None,
+                    NullablePatch::Null => Some(None),
+                    NullablePatch::Value(value) => Some(Some(value)),
+                },
                 kind: request.kind,
                 fields: request.fields,
             },

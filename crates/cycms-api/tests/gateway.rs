@@ -84,7 +84,7 @@ wasm_enabled = true
     build_router(state)
 }
 
-fn json_request(method: Method, uri: &str, body: Value) -> Request<Body> {
+fn json_request(method: Method, uri: &str, body: &Value) -> Request<Body> {
     Request::builder()
         .method(method)
         .uri(uri)
@@ -93,7 +93,7 @@ fn json_request(method: Method, uri: &str, body: Value) -> Request<Body> {
         .unwrap()
 }
 
-fn authorized_json_request(method: Method, uri: &str, token: &str, body: Value) -> Request<Body> {
+fn authorized_json_request(method: Method, uri: &str, token: &str, body: &Value) -> Request<Body> {
     Request::builder()
         .method(method)
         .uri(uri)
@@ -123,7 +123,7 @@ async fn bootstrap_admin(app: Router) -> (Router, String) {
         .oneshot(json_request(
             Method::POST,
             "/api/v1/auth/register",
-            json!({
+            &json!({
                 "username": "admin",
                 "email": "admin@example.test",
                 "password": "StrongPass1!"
@@ -138,7 +138,7 @@ async fn bootstrap_admin(app: Router) -> (Router, String) {
         .oneshot(json_request(
             Method::POST,
             "/api/v1/auth/login",
-            json!({
+            &json!({
                 "username": "admin",
                 "password": "StrongPass1!"
             }),
@@ -223,7 +223,7 @@ async fn creating_content_type_updates_openapi_document() {
             Method::POST,
             "/api/v1/content-types",
             &token,
-            json!({
+            &json!({
                 "name": "Article",
                 "api_id": "article",
                 "description": "Article content type",
