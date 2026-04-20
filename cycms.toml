@@ -50,6 +50,14 @@ allowed_mime_types = [
     "video/mp4",
 ]
 
+[observability]
+# pretty 适合本地开发；生产环境建议改为 json
+format = "pretty"
+# 支持 tracing EnvFilter 语法；简单场景可直接用 trace/debug/info/warn/error
+level = "info"
+# 是否将关键业务事件写入 audit_logs
+audit_enabled = true
+
 [plugins]
 # 插件存放目录
 directory = "plugins"

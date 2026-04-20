@@ -15,6 +15,7 @@ pub struct AppConfig {
     pub auth: AuthConfig,
     pub content: ContentConfig,
     pub media: MediaConfig,
+    pub observability: ObservabilityConfig,
     pub plugins: PluginsConfig,
 }
 
@@ -103,6 +104,22 @@ pub struct MediaConfig {
     pub allowed_mime_types: Vec<String>,
     /// 删除有引用的媒体资产时的行为：`"block"` 返回错误，`"warn"` 仅记录警告并继续删除。
     pub on_referenced_delete: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct ObservabilityConfig {
+    pub format: LogFormat,
+    pub level: String,
+    pub audit_enabled: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum LogFormat {
+    Json,
+    #[default]
+    Pretty,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -199,6 +216,16 @@ impl Default for MediaConfig {
                 "video/mp4".to_owned(),
             ],
             on_referenced_delete: "block".to_owned(),
+        }
+    }
+}
+
+impl Default for ObservabilityConfig {
+    fn default() -> Self {
+        Self {
+            format: LogFormat::Pretty,
+            level: "info".to_owned(),
+            audit_enabled: true,
         }
     }
 }
@@ -399,7 +426,7 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
 
     use super::{
-        AppConfig, DEFAULT_CONFIG_FILE, DatabaseDriver, DeleteMode, Error,
+        AppConfig, DEFAULT_CONFIG_FILE, DatabaseDriver, DeleteMode, Error, LogFormat,
         apply_env_overrides_from_iter,
     };
 
@@ -431,6 +458,11 @@ max_page_size = 200
 [media]
 upload_dir = "media"
 
+[observability]
+format = "json"
+level = "debug"
+audit_enabled = false
+
 [plugins]
 wasm_enabled = false
 "#,
@@ -453,6 +485,9 @@ wasm_enabled = false
         assert_eq!(config.content.default_page_size, 50);
         assert_eq!(config.content.max_page_size, 200);
         assert_eq!(config.media.upload_dir, "media");
+        assert_eq!(config.observability.format, LogFormat::Json);
+        assert_eq!(config.observability.level, "debug");
+        assert!(!config.observability.audit_enabled);
         assert!(!config.plugins.wasm_enabled);
     }
 
@@ -494,6 +529,7 @@ wasm_enabled = false
                     "CYCMS__SERVER__CORS__ALLOWED_ORIGINS",
                     r#"["https://admin.example.com","https://cms.example.com"]"#,
                 ),
+                ("CYCMS__OBSERVABILITY__AUDIT_ENABLED", "false"),
                 ("CYCMS__PLUGINS__WASM_ENABLED", "false"),
             ],
         )
@@ -506,7 +542,16 @@ wasm_enabled = false
                 "https://cms.example.com".to_owned(),
             ]
         );
+        assert!(!config.observability.audit_enabled);
         assert!(!config.plugins.wasm_enabled);
+    }
+
+    #[test]
+    fn observability_defaults_to_pretty_info_with_audit_enabled() {
+        let config = AppConfig::default();
+        assert_eq!(config.observability.format, LogFormat::Pretty);
+        assert_eq!(config.observability.level, "info");
+        assert!(config.observability.audit_enabled);
     }
 
     #[test]
