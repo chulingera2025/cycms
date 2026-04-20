@@ -1,0 +1,15 @@
+[package]
+name = "dynamic_echo_plugin"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+async-trait = "0.1"
+serde_json = "1"
+cycms-core = { path = "../../../../cycms-core" }
+cycms-plugin-api = { path = "../../../../cycms-plugin-api" }

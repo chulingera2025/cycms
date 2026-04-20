@@ -7,7 +7,7 @@ use tokio::sync::broadcast;
 use crate::event::{Event, EventKind};
 
 /// 单桶 broadcast channel 默认容量。最慢订阅者超出容量时会收到 `Lagged(n)` 并
-/// 丢弃最旧消息。v0.1 写死 256，v0.2 接入 `SettingsConfig`。
+/// 丢弃最旧消息；应用可通过 `AppConfig.events.channel_capacity` 覆盖该默认值。
 pub const DEFAULT_CHANNEL_CAPACITY: usize = 256;
 
 /// handler 单次 `handle()` 调用的默认超时。超时后 handler future 会被 drop，后台

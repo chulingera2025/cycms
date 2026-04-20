@@ -9,12 +9,10 @@ use serde_json::Value;
 
 use crate::model::{PluginSchema, SettingEntry};
 use crate::repository::{PluginSchemaRepository, SettingsRepository};
-use crate::schema::validate_schema_shape;
+use crate::schema::{validate_schema_shape, validate_settings_instance};
 
 /// 系统与插件设置的统一访问门面。
-///
-/// 在任务 8 的各子阶段逐步填充：C4 挂入 `get/set/delete/get_all`，C5 挂入 schema
-/// 相关方法；最终由 C7 注入到 `AppContext.settings_manager`。
+/// 提供统一接口来访问系统和插件的设置，包括读取、写入、删除设置，以及管理插件的设置 schema。
 pub struct SettingsManager {
     #[allow(dead_code)]
     db: Arc<DatabasePool>,
@@ -23,6 +21,7 @@ pub struct SettingsManager {
 }
 
 impl SettingsManager {
+    /// 构造 `SettingsManager`。
     #[must_use]
     pub fn new(db: Arc<DatabasePool>) -> Self {
         let settings = SettingsRepository::new(Arc::clone(&db));
@@ -34,11 +33,13 @@ impl SettingsManager {
         }
     }
 
+    /// 直接访问底层 settings repository。
     #[must_use]
     pub fn settings(&self) -> &SettingsRepository {
         &self.settings
     }
 
+    /// 直接访问底层 plugin schema repository。
     #[must_use]
     pub fn schemas(&self) -> &PluginSchemaRepository {
         &self.schemas
@@ -61,6 +62,13 @@ impl SettingsManager {
     /// # Errors
     /// 见 [`SettingsRepository::upsert`]。
     pub async fn set(&self, namespace: &str, key: &str, value: Value) -> Result<SettingEntry> {
+        if let Some(schema) = self.schemas.find(namespace).await? {
+            let mut snapshot = self.get_all(namespace).await?;
+            snapshot.insert(key.trim().to_owned(), value.clone());
+            let instance = Value::Object(snapshot.into_iter().collect());
+            validate_settings_instance(&schema.schema, &instance)?;
+        }
+
         self.settings.upsert(namespace, key, value).await
     }
 
@@ -86,9 +94,8 @@ impl SettingsManager {
 
     /// 注册或覆盖插件 settings schema。
     ///
-    /// 写入前先用 [`validate_schema_shape`] 做最小形状校验（必须是 JSON 对象且含
-    /// `type` 或 `properties`）。v0.1 不在 [`Self::set`] 时按 schema 校验 value，
-    /// 待 v0.2 引入 `jsonschema` crate 后补齐。
+    /// 写入前先用 [`validate_schema_shape`] 校验 schema 文档本身；后续对同名
+    /// namespace 的 [`Self::set`] 写入会按该 schema 校验合成后的 namespace 快照。
     ///
     /// # Errors
     /// - `plugin_name` 为空 / schema 形状非法 → [`cycms_core::Error::ValidationError`]

@@ -30,6 +30,7 @@ use cycms_plugin_manager::{
 use cycms_publish::PublishManager;
 use cycms_revision::RevisionManager;
 use cycms_settings::SettingsManager;
+use cycms_permission::NewRoleRow;
 use semver::Version;
 use tempfile::{TempDir, tempdir};
 
@@ -83,6 +84,7 @@ impl PluginRuntime for MockRuntime {
 
 struct Harness {
     _tmp: TempDir,
+    pool: Arc<DatabasePool>,
     plugins_root: PathBuf,
     manager: PluginManager,
     mock: Arc<MockRuntime>,
@@ -171,6 +173,7 @@ async fn fresh_harness() -> Harness {
 
     Harness {
         _tmp: tmp,
+        pool,
         plugins_root,
         manager,
         mock,
@@ -358,6 +361,142 @@ async fn service_registry_toggles_with_enable_disable() {
         err,
         cycms_plugin_api::RegistryError::ServiceUnavailable { .. }
     ));
+}
+
+#[tokio::test]
+async fn uninstall_cleans_role_permission_links() {
+    let harness = fresh_harness().await;
+    write_plugin(
+        &harness.plugins_root,
+        "blog",
+        "0.1.0",
+        r#"
+[permissions]
+definitions = [
+  { domain = "blog", resource = "post", action = "create" },
+]
+"#,
+    );
+    let discovered = scan_plugins_dir(&harness.plugins_root).unwrap();
+    harness.manager.install(&discovered[0]).await.unwrap();
+
+    let role = harness
+        .permission_engine
+        .roles()
+        .create(NewRoleRow {
+            name: "reviewer".into(),
+            description: None,
+            is_system: false,
+        })
+        .await
+        .unwrap();
+    let permission = harness
+        .permission_engine
+        .permissions()
+        .list_by_source("blog")
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    harness
+        .permission_engine
+        .roles()
+        .attach_permission(&role.id, &permission.id)
+        .await
+        .unwrap();
+
+    let DatabasePool::Sqlite(pool) = harness.pool.as_ref() else {
+        panic!("expected sqlite");
+    };
+    let before: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM role_permissions WHERE role_id = ? AND permission_id = ?",
+    )
+    .bind(&role.id)
+    .bind(&permission.id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    assert_eq!(before, 1);
+
+    harness.manager.uninstall("blog").await.unwrap();
+
+    let after: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM role_permissions WHERE role_id = ? AND permission_id = ?",
+    )
+    .bind(&role.id)
+    .bind(&permission.id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    assert_eq!(after, 0);
+}
+
+#[tokio::test]
+async fn install_rolls_back_applied_plugin_migrations_on_failure() {
+    let harness = fresh_harness().await;
+    let plugin_dir = harness.plugins_root.join("broken");
+    fs::create_dir_all(plugin_dir.join("migrations/sqlite")).unwrap();
+    fs::write(
+        plugin_dir.join("plugin.toml"),
+        r#"
+migrations = ["migrations"]
+
+[plugin]
+name = "broken"
+version = "0.1.0"
+kind = "native"
+entry = "broken.so"
+
+[compatibility]
+cycms = ">=0.1.0"
+"#,
+    )
+    .unwrap();
+    fs::write(
+        plugin_dir.join("migrations/sqlite/20260102000001_create_demo.up.sql"),
+        "CREATE TABLE broken_install_demo (id INTEGER NOT NULL);",
+    )
+    .unwrap();
+    fs::write(
+        plugin_dir.join("migrations/sqlite/20260102000001_create_demo.down.sql"),
+        "DROP TABLE IF EXISTS broken_install_demo;",
+    )
+    .unwrap();
+    fs::write(
+        plugin_dir.join("migrations/sqlite/20260102000002_fail.up.sql"),
+        "THIS IS NOT VALID SQL;",
+    )
+    .unwrap();
+    fs::write(
+        plugin_dir.join("migrations/sqlite/20260102000002_fail.down.sql"),
+        "SELECT 1;",
+    )
+    .unwrap();
+
+    let discovered = scan_plugins_dir(&harness.plugins_root).unwrap();
+    let err = harness.manager.install(&discovered[0]).await.unwrap_err();
+    assert!(matches!(err, cycms_core::Error::Internal { .. }), "got: {err:?}");
+
+    let DatabasePool::Sqlite(pool) = harness.pool.as_ref() else {
+        panic!("expected sqlite");
+    };
+    let applied_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM migration_records WHERE source = ? AND status = 'applied'",
+    )
+    .bind("broken")
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    assert_eq!(applied_count, 0);
+
+    let demo_table_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'broken_install_demo'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    assert_eq!(demo_table_count, 0);
+    assert!(harness.manager.list().await.unwrap().is_empty());
 }
 
 #[tokio::test]

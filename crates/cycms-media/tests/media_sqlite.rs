@@ -6,6 +6,7 @@ use cycms_db::DatabasePool;
 use cycms_events::EventBus;
 use cycms_media::{MediaManager, MediaQuery, UploadInput};
 use cycms_migrate::MigrationEngine;
+use serde_json::json;
 use tempfile::TempDir;
 
 fn system_migrations_root() -> PathBuf {
@@ -306,6 +307,44 @@ async fn list_with_filename_filter() {
 }
 
 #[tokio::test]
+async fn list_with_filename_filter_escapes_like_wildcards() {
+    let s = make_setup().await;
+
+    s.manager
+        .upload(UploadInput {
+            original_filename: "literal%name.png".to_owned(),
+            data: tiny_png(),
+            mime_type: None,
+            uploaded_by: "user-01".to_owned(),
+            metadata: None,
+        })
+        .await
+        .unwrap();
+    s.manager
+        .upload(UploadInput {
+            original_filename: "plain-name.png".to_owned(),
+            data: tiny_png(),
+            mime_type: None,
+            uploaded_by: "user-01".to_owned(),
+            metadata: None,
+        })
+        .await
+        .unwrap();
+
+    let result = s
+        .manager
+        .list(&MediaQuery {
+            filename_contains: Some("%name".to_owned()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result.total, 1);
+    assert_eq!(result.data[0].original_filename, "literal%name.png");
+}
+
+#[tokio::test]
 async fn list_pagination() {
     let s = make_setup().await;
 
@@ -419,4 +458,49 @@ async fn delete_with_block_policy_on_referenced_returns_error() {
         matches!(err, cycms_media::MediaError::ReferencedAsset(_, n) if n == 1),
         "expected ReferencedAsset(_, 1), got: {err:?}"
     );
+}
+
+#[tokio::test]
+async fn delete_detects_nested_json_references() {
+    let s = make_setup().await;
+    let asset = s
+        .manager
+        .upload(UploadInput {
+            original_filename: "gallery.png".to_owned(),
+            data: tiny_png(),
+            mime_type: None,
+            uploaded_by: "user-01".to_owned(),
+            metadata: None,
+        })
+        .await
+        .unwrap();
+
+    let DatabasePool::Sqlite(pool) = s.pool.as_ref() else {
+        panic!("expected sqlite");
+    };
+    sqlx::query(
+        "INSERT INTO content_types (id, api_id, name, kind) \
+         VALUES ('ct-01', 'article', 'Article', 'collection')",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO content_entries \
+         (id, content_type_id, status, fields, created_by, updated_by) \
+         VALUES ('entry-01', 'ct-01', 'draft', ?, 'user-01', 'user-01')",
+    )
+    .bind(
+        json!({
+            "gallery": [asset.id.clone()],
+            "cover": { "asset": asset.id.clone() }
+        })
+        .to_string(),
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+
+    let err = s.manager.delete(&asset.id).await.unwrap_err();
+    assert!(matches!(err, cycms_media::MediaError::ReferencedAsset(_, 1)));
 }

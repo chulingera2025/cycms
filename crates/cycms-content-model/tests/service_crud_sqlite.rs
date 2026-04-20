@@ -32,7 +32,44 @@ async fn fresh_registry() -> ContentModelRegistry {
         .run_system_migrations(&system_migrations_root())
         .await
         .expect("run system migrations");
+    seed_user(&pool).await;
     ContentModelRegistry::new(pool, Arc::new(FieldTypeRegistry::new()))
+}
+
+async fn fresh_registry_with_pool() -> (ContentModelRegistry, Arc<DatabasePool>) {
+    let pool = Arc::new(
+        DatabasePool::connect(&DatabaseConfig {
+            driver: DatabaseDriver::Sqlite,
+            url: "sqlite::memory:".to_owned(),
+            max_connections: 1,
+            connect_timeout_secs: 5,
+            idle_timeout_secs: 60,
+        })
+        .await
+        .expect("sqlite pool connect"),
+    );
+    MigrationEngine::new(Arc::clone(&pool))
+        .run_system_migrations(&system_migrations_root())
+        .await
+        .expect("run system migrations");
+    seed_user(&pool).await;
+    (
+        ContentModelRegistry::new(Arc::clone(&pool), Arc::new(FieldTypeRegistry::new())),
+        pool,
+    )
+}
+
+async fn seed_user(pool: &Arc<DatabasePool>) {
+    let DatabasePool::Sqlite(inner) = pool.as_ref() else {
+        panic!("expected sqlite");
+    };
+    sqlx::query(
+        "INSERT INTO users (id, username, email, password_hash) \
+         VALUES ('user-01', 'tester', 'test@example.com', 'hash')",
+    )
+    .execute(inner)
+    .await
+    .unwrap();
 }
 
 fn article_input() -> CreateContentTypeInput {
@@ -174,6 +211,101 @@ async fn delete_type_removes_row() {
     assert!(reg.delete_type("article").await.unwrap());
     assert!(!reg.delete_type("article").await.unwrap());
     assert!(reg.get_type("article").await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn update_type_rejects_destructive_change_when_entries_exist() {
+    let (reg, pool) = fresh_registry_with_pool().await;
+    let created = reg.create_type(article_input()).await.unwrap();
+
+    let DatabasePool::Sqlite(inner) = pool.as_ref() else {
+        panic!("expected sqlite");
+    };
+    sqlx::query(
+        "INSERT INTO content_entries \
+         (id, content_type_id, status, fields, created_by, updated_by) \
+         VALUES ('entry-01', ?, 'draft', ?, 'user-01', 'user-01')",
+    )
+    .bind(&created.id)
+    .bind(json!({ "title": "Hello", "slug": "hello-world", "views": 1 }).to_string())
+    .execute(inner)
+    .await
+    .unwrap();
+
+    let err = reg
+        .update_type(
+            "article",
+            UpdateContentTypeInput {
+                fields: Some(vec![FieldDefinition {
+                    name: "Title".into(),
+                    api_id: "title".into(),
+                    field_type: FieldType::Text,
+                    required: true,
+                    unique: false,
+                    default_value: None,
+                    validations: vec![],
+                    position: 0,
+                }]),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, Error::Conflict { .. }), "got: {err:?}");
+}
+
+#[tokio::test]
+async fn delete_type_rejects_when_entries_exist() {
+    let (reg, pool) = fresh_registry_with_pool().await;
+    let created = reg.create_type(article_input()).await.unwrap();
+
+    let DatabasePool::Sqlite(inner) = pool.as_ref() else {
+        panic!("expected sqlite");
+    };
+    sqlx::query(
+        "INSERT INTO content_entries \
+         (id, content_type_id, status, fields, created_by, updated_by) \
+         VALUES ('entry-01', ?, 'draft', ?, 'user-01', 'user-01')",
+    )
+    .bind(&created.id)
+    .bind(json!({ "title": "Hello", "slug": "hello-world" }).to_string())
+    .execute(inner)
+    .await
+    .unwrap();
+
+    let err = reg.delete_type("article").await.unwrap_err();
+    assert!(matches!(err, Error::Conflict { .. }), "got: {err:?}");
+}
+
+#[tokio::test]
+async fn delete_type_rejects_when_other_types_reference_it() {
+    let reg = fresh_registry().await;
+    reg.create_type(article_input()).await.unwrap();
+    reg.create_type(CreateContentTypeInput {
+        name: "Comment".into(),
+        api_id: "comment".into(),
+        description: None,
+        kind: ContentTypeKind::Collection,
+        fields: vec![FieldDefinition {
+            name: "Article".into(),
+            api_id: "article".into(),
+            field_type: FieldType::Relation {
+                target_type: "article".into(),
+                relation_kind: cycms_content_model::RelationKind::OneToOne,
+            },
+            required: false,
+            unique: false,
+            default_value: None,
+            validations: vec![],
+            position: 0,
+        }],
+    })
+    .await
+    .unwrap();
+
+    let err = reg.delete_type("article").await.unwrap_err();
+    assert!(matches!(err, Error::Conflict { .. }), "got: {err:?}");
 }
 
 #[tokio::test]

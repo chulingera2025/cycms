@@ -163,7 +163,8 @@ async fn plugin_new_command_generates_valid_native_plugin_scaffold() {
 
     let manifest = fs::read_to_string(plugin_root.join("plugin.toml")).unwrap();
     PluginManifest::from_toml_str(&manifest).unwrap();
-    assert!(plugin_root.join("src/lib.rs").exists());
+    let lib_rs = fs::read_to_string(plugin_root.join("src/lib.rs")).unwrap();
+    assert!(lib_rs.contains("cycms_plugin_api::export_plugin!"));
     assert!(plugin_root.join("migrations/postgres").is_dir());
 }
 

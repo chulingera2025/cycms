@@ -24,6 +24,7 @@ members = [
     "crates/cycms-plugin-wasm",
     "crates/cycms-cli",
 ]
+exclude = ["support/cycms-native-loader"]
 
 [workspace.package]
 version = "0.1.0"
@@ -52,6 +53,7 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 toml = "0.8"
+clap = { version = "4", features = ["derive"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "mysql", "sqlite", "uuid", "chrono", "json"] }
 axum = "0.8"
 tower = "0.5"
@@ -63,6 +65,7 @@ rand = "0.8"
 async-trait = "0.1"
 infer = "0.19"
 tempfile = "3"
+jsonschema = { version = "0.46.1", default-features = false }
 
 cycms-core = { path = "crates/cycms-core" }
 cycms-kernel = { path = "crates/cycms-kernel" }

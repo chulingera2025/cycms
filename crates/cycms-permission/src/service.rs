@@ -58,7 +58,7 @@ impl PermissionEngine {
     /// 4. 角色为空返回 false；
     /// 5. 对命中的每条 permission scope：`All` 直接放行，`Own` 需 `owner_id == user_id`。
     ///
-    /// v0.1 未加缓存，每次都打 DB，单行索引查询 <1ms，v0.2 会引入本地 cache。
+    /// 当前不做本地缓存，每次都直接查询 DB；鉴于这里是单行索引查询，开销仍可接受。
     ///
     /// # Errors
     /// - `code` 格式非法 → [`cycms_core::Error::ValidationError`]
@@ -146,14 +146,15 @@ impl PermissionEngine {
         self.permissions.upsert_many(source, &defs).await
     }
 
-    /// 按 `source` 批量删除权限，返回被删行数。通常用于插件卸载。
+    /// 按 `source` 批量删除权限，返回被删权限行数。通常用于插件卸载。
     ///
-    /// TODO!!!: 任务 15 `PluginManager` 卸载流程集成时，需要级联清理 `role_permissions`
-    /// 中对应记录，v0.1 暂由 FK `ON DELETE CASCADE` 处理。
+    /// 删除前会显式清理 `role_permissions` 中对应关联，避免把关联清理完全交给数据库
+    /// 级联行为，并便于卸载流程做明确审计。
     ///
     /// # Errors
     /// DB 故障 → [`cycms_core::Error::Internal`]。
     pub async fn unregister_permissions_by_source(&self, source: &str) -> Result<u64> {
+        let _ = self.permissions.delete_role_links_by_source(source).await?;
         self.permissions.delete_by_source(source).await
     }
 

@@ -21,6 +21,7 @@ pub struct MigrationEngine {
 }
 
 impl MigrationEngine {
+    /// 构造 `MigrationEngine`。
     pub fn new(db: Arc<DatabasePool>) -> Self {
         Self { db }
     }
@@ -67,8 +68,6 @@ impl MigrationEngine {
     ///
     /// `source` 固定为插件名，因此同一套迁移文件在不同插件命名空间下可并存；
     /// `migrations_dir` 是插件目录下的 `migrations/` 根（内部同样按方言分子目录）。
-    ///
-    /// TODO!!! 任务 15：由 `PluginManager` 在安装/升级阶段调用本函数。
     ///
     /// # Errors
     /// 元表初始化、文件发现或单条迁移执行失败时均返回错误。
@@ -139,6 +138,57 @@ impl MigrationEngine {
             });
         }
         Ok(rolled)
+    }
+
+    /// 返回指定 `source` 当前处于 `applied` 状态的迁移数量。
+    ///
+    /// # Errors
+    /// 元表查询失败时返回错误。
+    pub async fn applied_count(&self, source: &str) -> Result<usize> {
+        self.ensure_meta_table().await?;
+        let versions = runner::list_applied_versions(&self.db, source).await?;
+        Ok(versions.len())
+    }
+
+    /// 返回指定 `source` 当前仍处于 `applied` 状态的迁移版本列表。
+    ///
+    /// # Errors
+    /// 元表查询失败时返回错误。
+    pub async fn applied_versions(&self, source: &str) -> Result<Vec<i64>> {
+        self.ensure_meta_table().await?;
+        runner::list_applied_versions(&self.db, source).await
+    }
+
+    /// 返回指定 `source` 在某个迁移根目录下、当前仍处于 `applied` 状态的版本列表。
+    ///
+    /// 该方法会使用与 [`MigrationEngine::rollback`] 相同的方言目录解析规则，只统计
+    /// 当前数据库方言实际会读取到的迁移文件。
+    ///
+    /// # Errors
+    /// 元表查询或迁移目录扫描失败时返回错误。
+    pub async fn applied_versions_in_dir(
+        &self,
+        source: &str,
+        migrations_root: &Path,
+    ) -> Result<Vec<i64>> {
+        self.ensure_meta_table().await?;
+
+        let applied: HashSet<i64> = runner::list_applied_versions(&self.db, source)
+            .await?
+            .into_iter()
+            .collect();
+        if applied.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let dir = resolve_driver_dir(self.db.db_type(), migrations_root);
+        let mut versions: Vec<i64> = discovery::scan(&dir)?
+            .into_iter()
+            .map(|migration| migration.version)
+            .filter(|version| applied.contains(version))
+            .collect();
+        versions.sort_unstable();
+        Ok(versions)
     }
 
     async fn run_migrations_for(

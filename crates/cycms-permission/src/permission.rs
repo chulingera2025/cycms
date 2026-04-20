@@ -367,6 +367,45 @@ impl PermissionRepository {
         Ok(affected)
     }
 
+    /// 按 `source` 删除 `role_permissions` 中所有指向该来源权限的关联行。
+    ///
+    /// # Errors
+    /// DB 错误 → [`cycms_core::Error::Internal`]。
+    pub async fn delete_role_links_by_source(&self, source: &str) -> Result<u64> {
+        let affected = match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => sqlx::query(
+                "DELETE FROM role_permissions rp \
+                 USING permissions p \
+                 WHERE rp.permission_id = p.id AND p.source = $1",
+            )
+            .bind(source)
+            .execute(pool)
+            .await
+            .map_err(PermissionError::Database)?
+            .rows_affected(),
+            DatabasePool::MySql(pool) => sqlx::query(
+                "DELETE rp FROM role_permissions rp \
+                 INNER JOIN permissions p ON p.id = rp.permission_id \
+                 WHERE p.source = ?",
+            )
+            .bind(source)
+            .execute(pool)
+            .await
+            .map_err(PermissionError::Database)?
+            .rows_affected(),
+            DatabasePool::Sqlite(pool) => sqlx::query(
+                "DELETE FROM role_permissions \
+                 WHERE permission_id IN (SELECT id FROM permissions WHERE source = ?)",
+            )
+            .bind(source)
+            .execute(pool)
+            .await
+            .map_err(PermissionError::Database)?
+            .rows_affected(),
+        };
+        Ok(affected)
+    }
+
     async fn insert_or_ignore(
         &self,
         domain: &str,

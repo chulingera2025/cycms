@@ -35,39 +35,20 @@ use tracing::{info, warn};
 /// 全局应用上下文，Kernel bootstrap 后在所有组件间共享。
 #[non_exhaustive]
 pub struct AppContext {
-    /// 任务 2：真实应用配置对象。
     pub config: Arc<AppConfig>,
-    /// 任务 3：多方言数据库连接池。
     pub db: Arc<DatabasePool>,
-    /// 任务 5：认证引擎，提供登录/刷新/初始管理员/Token 校验等能力。
     pub auth_engine: Arc<AuthEngine>,
-    /// 任务 6：权限引擎，提供角色/权限 CRUD 与 `check_permission` 判定。
     pub permission_engine: Arc<PermissionEngine>,
-    /// 任务 7：进程内异步事件总线，按 `EventKind` 广播订阅者。
     pub event_bus: Arc<EventBus>,
-    /// 任务 8:系统与插件设置的统一访问门面。
     pub settings_manager: Arc<SettingsManager>,
-    /// 任务 9：插件间服务发现与调用门面。
     pub service_registry: Arc<ServiceRegistry>,
-    /// 任务 10：内容类型管理与字段校验 / Schema 输出门面。
     pub content_model: Arc<ContentModelRegistry>,
-    /// 任务 11：内容实例 CRUD + 查询引擎 + `EventBus` 集成门面。
     pub content_engine: Arc<ContentEngine>,
-    /// 任务 12：内容版本快照与回滚门面。
     pub revision_manager: Arc<RevisionManager>,
-    /// 任务 13：发布状态机门面（Draft → Published / Published → Draft）。
     pub publish_manager: Arc<PublishManager>,
-    /// 任务 14：媒体资产管理门面（上传/查询/删除）。
     pub media_manager: Arc<MediaManager>,
-    /// 任务 15：插件生命周期管理器，封装 install / enable / disable / uninstall 状态机。
     pub plugin_manager: Arc<PluginManager>,
-    /// 任务 16：Native 插件运行时。
-    /// 宿主代码 / CLI 在 `serve` 前通过 `native_runtime.register_plugin(...)` 交付
-    /// `Arc<dyn Plugin>`，`PluginManager::enable` 时由此 runtime 执行生命周期钩子。
     pub native_runtime: Arc<NativePluginRuntime>,
-    /// 任务 17：Wasm Component Model 插件运行时。
-    /// `PluginManager::enable` 时由此 runtime 从 `.wasm` 加载 guest 并执行生命周期
-    /// 钩子；`all_routes()` 暴露 guest 注册的路由供 API Gateway 合并。
     pub wasm_runtime: Arc<WasmPluginRuntime>,
 }
 
@@ -112,7 +93,10 @@ impl Kernel {
             migration_engine.run_system_migrations(dir).await?;
         }
 
-        let event_bus = Arc::new(EventBus::new());
+        let event_bus = Arc::new(EventBus::with_config(
+            self.config.events.channel_capacity,
+            Duration::from_secs(self.config.events.handler_timeout_secs),
+        ));
         if self.config.observability.audit_enabled {
             let audit_logger = Arc::new(AuditLogger::new(Arc::clone(&db)));
             let _subscriptions = audit_logger.subscribe_all(&event_bus);

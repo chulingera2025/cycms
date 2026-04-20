@@ -17,8 +17,9 @@ pub struct SettingEntry {
 
 /// 一份插件设置 schema 的对外视图，`plugin_name` 作为主键。
 ///
-/// 任务 8 阶段仅持久化 schema JSON；真正的 JSON Schema 校验将在 v0.2 接入
-/// `jsonschema` crate 后补齐（见 [`crate::schema`] 中的 TODO）。
+/// `schema` 使用标准 JSON Schema 表达整个 namespace 的键值快照，
+/// [`crate::service::SettingsManager`] 在写入插件 namespace 时会把当前 namespace
+/// 下的全部键合成为一个 JSON object，并按此 schema 做实例校验。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginSchema {
     pub plugin_name: String,

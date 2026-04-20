@@ -34,6 +34,10 @@ max_connections = 1
 connect_timeout_secs = 5
 idle_timeout_secs = 60
 
+[events]
+channel_capacity = 128
+handler_timeout_secs = 2
+
 [observability]
 audit_enabled = false
 "#,
@@ -71,8 +75,10 @@ audit_enabled = false
             .is_empty()
     );
 
-    // EventBus 已挂入上下文：默认容量生效，无订阅者时 publish 静默 no-op
-    assert_eq!(ctx.event_bus.capacity(), DEFAULT_CHANNEL_CAPACITY);
+    // EventBus 已挂入上下文：配置值生效，无订阅者时 publish 静默 no-op
+    assert_ne!(ctx.event_bus.capacity(), DEFAULT_CHANNEL_CAPACITY);
+    assert_eq!(ctx.event_bus.capacity(), 128);
+    assert_eq!(ctx.event_bus.handler_timeout().as_secs(), 2);
     ctx.event_bus.publish(Event::new(EventKind::ContentCreated));
     assert_eq!(ctx.event_bus.receiver_count(&EventKind::ContentCreated), 0);
 

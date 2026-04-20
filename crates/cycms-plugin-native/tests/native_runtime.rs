@@ -7,6 +7,7 @@
 //! - re-enable：确认 runtime 状态可二次复用
 
 use std::any::Any;
+use std::process::Command;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -222,6 +223,67 @@ async fn fresh_harness() -> Harness {
     }
 }
 
+fn dynamic_fixture_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/guest/dynamic-echo-plugin")
+}
+
+fn dynamic_fixture_library_name() -> &'static str {
+    #[cfg(target_os = "linux")]
+    {
+        "libdynamic_echo_plugin.so"
+    }
+    #[cfg(target_os = "macos")]
+    {
+        "libdynamic_echo_plugin.dylib"
+    }
+    #[cfg(target_os = "windows")]
+    {
+        "dynamic_echo_plugin.dll"
+    }
+}
+
+fn build_dynamic_fixture() -> PathBuf {
+    let fixture_root = dynamic_fixture_root();
+    let target_dir = fixture_root.join("target/native-runtime-tests");
+    let status = Command::new("cargo")
+        .arg("build")
+        .arg("--release")
+        .current_dir(&fixture_root)
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .env_remove("CARGO_ENCODED_RUSTFLAGS")
+        .status()
+        .expect("run cargo build for dynamic fixture");
+    assert!(status.success(), "dynamic fixture build failed: {status}");
+
+    target_dir
+        .join("release")
+        .join(dynamic_fixture_library_name())
+}
+
+fn write_dynamic_plugin(root: &Path, name: &str, version: &str) -> PathBuf {
+    let dir = root.join(name);
+    fs::create_dir_all(&dir).unwrap();
+    let entry = dynamic_fixture_library_name();
+    let text = format!(
+        r#"
+[plugin]
+name = "{name}"
+version = "{version}"
+kind = "native"
+entry = "{entry}"
+
+[compatibility]
+cycms = ">=0.1.0"
+"#
+    );
+    fs::write(dir.join("plugin.toml"), text).unwrap();
+
+    let built = build_dynamic_fixture();
+    let copied = dir.join(entry);
+    fs::copy(built, &copied).unwrap();
+    copied
+}
+
 fn write_plugin(root: &Path, name: &str, version: &str) {
     let dir = root.join(name);
     fs::create_dir_all(&dir).unwrap();
@@ -372,4 +434,26 @@ async fn register_plugin_replace_warns_and_uses_latest() {
     harness.manager.enable("echo").await.unwrap();
     assert!(v2_enabled.load(Ordering::SeqCst));
     assert!(!v1.enabled_flag().load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn enable_loads_dynamic_library_when_plugin_not_pre_registered() {
+    let harness = fresh_harness().await;
+    let so_path = write_dynamic_plugin(&harness.plugins_root, "dynamic-echo", "0.1.0");
+    assert!(so_path.exists());
+
+    let marker_path = dynamic_fixture_root().join("dynamic-plugin.marker");
+    let _ = fs::remove_file(&marker_path);
+
+    let discovered = scan_plugins_dir(&harness.plugins_root).unwrap();
+    harness.manager.install(&discovered[0]).await.unwrap();
+    harness.manager.enable("dynamic-echo").await.unwrap();
+
+    assert_eq!(harness.runtime.loaded_plugins(), vec!["dynamic-echo".to_owned()]);
+    assert!(harness.runtime.routes_of("dynamic-echo").is_none());
+    assert_eq!(fs::read_to_string(&marker_path).unwrap(), "enabled");
+
+    harness.manager.disable("dynamic-echo", false).await.unwrap();
+    assert_eq!(fs::read_to_string(&marker_path).unwrap(), "disabled");
+    fs::remove_file(&marker_path).unwrap();
 }

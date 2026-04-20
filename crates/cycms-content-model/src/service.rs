@@ -2,12 +2,12 @@
 //!
 //! 功能边界（Req 3.1 / 3.2 / 3.3 / 3.4 / 3.5 / 3.6）：
 //! - `create_type`：字段定义 + `api_id` 校验 → 重复检测 → 持久化。
-//! - `update_type`：字段级 diff 日志（v0.1 仅 warn，不阻断；TODO 任务 11 增加 entries 级检查）。
-//! - `delete_type`：直接按 `api_id` 删除；TODO 任务 11 检查反向引用。
+//! - `update_type`：字段级 diff 日志 + 既有 entries 与新 schema 的兼容性检查。
+//! - `delete_type`：删除前检查实例占用与其他 Content Type 的 relation 反向引用。
 //! - `validate_entry` / `to_json_schema`：薄封装 `validation` / `schema` 模块。
 //! - `register_field_type` / `unregister_field_types_by_prefix`：插件字段类型生命周期。
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 
 use cycms_core::Result;
@@ -18,7 +18,8 @@ use tracing::warn;
 use crate::error::ContentModelError;
 use crate::field_type::{FieldTypeHandler, FieldTypeRegistry};
 use crate::model::{
-    ContentTypeDefinition, CreateContentTypeInput, FieldDefinition, UpdateContentTypeInput,
+    ContentTypeDefinition, CreateContentTypeInput, FieldDefinition, FieldType,
+    UpdateContentTypeInput,
 };
 use crate::repository::{
     ContentTypeRepository, NewContentTypeRow, UpdateContentTypeRow, new_content_type_id,
@@ -76,8 +77,8 @@ impl ContentModelRegistry {
 
     /// 按 `api_id` 更新 Content Type（Req 3.3）。
     ///
-    /// 字段级 diff（添加 / 删除 / 改类型）会记录 `warn!` 日志，v0.1 不阻断；后续任务 11
-    /// 集成 `ContentEngine` 时应在此收紧：含实例的字段不允许破坏性变更。
+    /// 字段级 diff（添加 / 删除 / 改类型）会记录 `warn!` 日志；若该 Content Type
+    /// 已存在实例，则新 schema 还必须与现有 entries 兼容，否则直接拒绝更新。
     ///
     /// # Errors
     /// - `api_id` 不存在 → [`ContentModelError::NotFound`]
@@ -108,6 +109,13 @@ impl ContentModelRegistry {
             Some(fields) => {
                 let normalized = normalize_fields(fields)?;
                 validate_field_definitions(&normalized, &self.field_types)?;
+                self.ensure_entries_compatible(
+                    &normalized_api,
+                    &existing.id,
+                    &existing.fields,
+                    &normalized,
+                )
+                .await?;
                 log_field_diff(&normalized_api, &existing.fields, &normalized);
                 normalized
             }
@@ -127,14 +135,18 @@ impl ContentModelRegistry {
             .await
     }
 
-    /// 按 `api_id` 删除。TODO!!!: 任务 11 集成 `ContentEngine` 时增加反向引用检查。
+    /// 按 `api_id` 删除；若仍有 entries 或被其他 Content Type 的 relation 字段引用，
+    /// 则拒绝删除。
     ///
     /// # Errors
     /// DB 故障 → [`ContentModelError::Database`]。
     pub async fn delete_type(&self, api_id: &str) -> Result<bool> {
         let normalized = normalize_api_id(api_id)?;
         match self.repo.find_by_api_id(&normalized).await? {
-            Some(def) => self.repo.delete_by_id(&def.id).await,
+            Some(def) => {
+                self.ensure_type_deletable(&def).await?;
+                self.repo.delete_by_id(&def.id).await
+            }
             None => Ok(false),
         }
     }
@@ -227,6 +239,115 @@ impl ContentModelRegistry {
             .await?
             .ok_or_else(|| ContentModelError::NotFound(normalized).into())
     }
+
+    async fn ensure_entries_compatible(
+        &self,
+        api_id: &str,
+        content_type_id: &str,
+        old_fields: &[FieldDefinition],
+        new_fields: &[FieldDefinition],
+    ) -> Result<()> {
+        let snapshots = self.repo.list_entry_snapshots(content_type_id).await?;
+        if snapshots.is_empty() {
+            return Ok(());
+        }
+
+        let old_ids: HashSet<&str> = old_fields.iter().map(|field| field.api_id.as_str()).collect();
+        let new_ids: HashSet<&str> = new_fields.iter().map(|field| field.api_id.as_str()).collect();
+        let removed_fields: BTreeSet<&str> = old_ids.difference(&new_ids).copied().collect();
+        let mut reasons = Vec::new();
+
+        for snapshot in &snapshots {
+            if let Some(obj) = snapshot.fields.as_object() {
+                for removed in &removed_fields {
+                    if obj.get(*removed).is_some_and(|value| !value.is_null()) {
+                        reasons.push(format!(
+                            "entry `{}` still stores removed field `{}`",
+                            snapshot.id, removed
+                        ));
+                    }
+                }
+            } else {
+                reasons.push(format!(
+                    "entry `{}` has non-object payload and cannot be migrated safely",
+                    snapshot.id
+                ));
+                continue;
+            }
+
+            match validate_fields(new_fields, &snapshot.fields, &self.field_types) {
+                Ok(()) => {}
+                Err(ContentModelError::SchemaViolation { errors }) => {
+                    let summary = errors
+                        .into_iter()
+                        .map(|error| format!("{}:{}", error.field, error.rule))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    reasons.push(format!(
+                        "entry `{}` is incompatible with new schema: {}",
+                        snapshot.id, summary
+                    ));
+                }
+                Err(other) => {
+                    reasons.push(format!(
+                        "entry `{}` cannot be revalidated against new schema: {}",
+                        snapshot.id, other
+                    ));
+                }
+            }
+        }
+
+        reasons.sort();
+        reasons.dedup();
+
+        if reasons.is_empty() {
+            Ok(())
+        } else {
+            Err(ContentModelError::DestructiveChangeBlocked {
+                api_id: api_id.to_owned(),
+                reasons,
+            }
+            .into())
+        }
+    }
+
+    async fn ensure_type_deletable(&self, definition: &ContentTypeDefinition) -> Result<()> {
+        let mut reasons = Vec::new();
+        let entry_count = self.repo.count_entries(&definition.id).await?;
+        if entry_count > 0 {
+            reasons.push(format!(
+                "content type `{}` still has {} stored entries",
+                definition.api_id, entry_count
+            ));
+        }
+
+        let all_types = self.repo.list().await?;
+        for content_type in all_types {
+            for field in &content_type.fields {
+                if let FieldType::Relation { target_type, .. } = &field.field_type
+                    && target_type == &definition.api_id
+                {
+                    reasons.push(format!(
+                        "content type `{}` field `{}` still targets `{}`",
+                        content_type.api_id, field.api_id, definition.api_id
+                    ));
+                }
+            }
+        }
+
+        reasons.sort();
+        reasons.dedup();
+
+        if reasons.is_empty() {
+            Ok(())
+        } else {
+            Err(ContentModelError::DeleteBlocked {
+                api_id: definition.api_id.clone(),
+                reasons,
+            }
+            .into())
+        }
+    }
 }
 
 fn normalize_fields(
@@ -250,7 +371,7 @@ fn log_field_diff(api_id: &str, old: &[FieldDefinition], new: &[FieldDefinition]
         warn!(
             content_type = %api_id,
             field = %removed,
-            "field removed on content type update (TODO: check referencing entries)"
+            "field removed on content type update"
         );
     }
     for added in new_ids.difference(&old_ids) {
@@ -267,7 +388,7 @@ fn log_field_diff(api_id: &str, old: &[FieldDefinition], new: &[FieldDefinition]
             warn!(
                 content_type = %api_id,
                 field = %f_new.api_id,
-                "field type changed on content type update (TODO: migrate data)"
+                "field type changed on content type update"
             );
         }
     }

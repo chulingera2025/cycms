@@ -58,6 +58,12 @@ allowed_mime_types = [
     "video/mp4",
 ]
 
+[events]
+# 单个事件桶的 broadcast channel 容量
+channel_capacity = 256
+# 单个 handler 处理一次事件的超时（秒）
+handler_timeout_secs = 5
+
 [observability]
 # pretty 适合本地开发；生产环境建议改为 json
 format = "pretty"

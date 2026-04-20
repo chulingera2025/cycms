@@ -1,5 +1,5 @@
-use rand::RngExt;
-use rand::distr::Alphanumeric;
+use rand::distributions::Alphanumeric;
+use rand::Rng;
 use std::sync::Arc;
 
 use cycms_auth::{AuthEngine, CreateUserInput};
@@ -72,7 +72,7 @@ pub(crate) async fn run(args: &SeedArgs) -> Result<()> {
 }
 
 fn generate_admin_password() -> String {
-    let mut rng = rand::rng();
+    let mut rng = rand::thread_rng();
     let random: String = (&mut rng)
         .sample_iter(Alphanumeric)
         .take(18)

@@ -14,6 +14,7 @@ use chrono::NaiveDateTime;
 use cycms_core::Result;
 use cycms_db::DatabasePool;
 use regex::Regex;
+use serde_json::Value;
 use sqlx::Row;
 use sqlx::mysql::MySqlRow;
 use sqlx::postgres::PgRow;
@@ -86,6 +87,13 @@ pub struct UpdateContentTypeRow {
     pub description: Option<String>,
     pub kind: ContentTypeKind,
     pub fields: Vec<FieldDefinition>,
+}
+
+/// 单条已存储 content entry 的最小快照，仅供 schema 兼容检查使用。
+#[derive(Debug, Clone)]
+pub(crate) struct ContentEntrySnapshot {
+    pub id: String,
+    pub fields: Value,
 }
 
 /// `content_types` 表 CRUD 门面。
@@ -363,6 +371,83 @@ impl ContentTypeRepository {
             }
         }
     }
+
+    /// 返回指定 Content Type 下所有 entry 的最小快照，供 schema 兼容检查使用。
+    pub(crate) async fn list_entry_snapshots(
+        &self,
+        content_type_id: &str,
+    ) -> Result<Vec<ContentEntrySnapshot>> {
+        match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(
+                    "SELECT id::TEXT AS id, fields FROM content_entries WHERE content_type_id = $1::UUID ORDER BY id",
+                )
+                .bind(content_type_id)
+                .fetch_all(pool)
+                .await
+                .map_err(ContentModelError::Database)?;
+                rows.iter()
+                    .map(pg_row_to_entry_snapshot)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+            DatabasePool::MySql(pool) => {
+                let rows = sqlx::query(
+                    "SELECT id, fields FROM content_entries WHERE content_type_id = ? ORDER BY id",
+                )
+                .bind(content_type_id)
+                .fetch_all(pool)
+                .await
+                .map_err(ContentModelError::Database)?;
+                rows.iter()
+                    .map(mysql_row_to_entry_snapshot)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+            DatabasePool::Sqlite(pool) => {
+                let rows = sqlx::query(
+                    "SELECT id, fields FROM content_entries WHERE content_type_id = ? ORDER BY id",
+                )
+                .bind(content_type_id)
+                .fetch_all(pool)
+                .await
+                .map_err(ContentModelError::Database)?;
+                rows.iter()
+                    .map(sqlite_row_to_entry_snapshot)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(Into::into)
+            }
+        }
+    }
+
+    /// 统计指定 Content Type 下的 entry 数量。
+    pub(crate) async fn count_entries(&self, content_type_id: &str) -> Result<u64> {
+        let count: i64 = match self.db.as_ref() {
+            DatabasePool::Postgres(pool) => sqlx::query_scalar(
+                "SELECT COUNT(*) FROM content_entries WHERE content_type_id = $1::UUID",
+            )
+            .bind(content_type_id)
+            .fetch_one(pool)
+            .await
+            .map_err(ContentModelError::Database)?,
+            DatabasePool::MySql(pool) => {
+                sqlx::query_scalar("SELECT COUNT(*) FROM content_entries WHERE content_type_id = ?")
+                    .bind(content_type_id)
+                    .fetch_one(pool)
+                    .await
+                    .map_err(ContentModelError::Database)?
+            }
+            DatabasePool::Sqlite(pool) => {
+                sqlx::query_scalar("SELECT COUNT(*) FROM content_entries WHERE content_type_id = ?")
+                    .bind(content_type_id)
+                    .fetch_one(pool)
+                    .await
+                    .map_err(ContentModelError::Database)?
+            }
+        };
+
+        Ok(u64::try_from(count).unwrap_or(0))
+    }
 }
 
 /// 便于上层生成 UUID v4 字符串：repository 不强制 `id` 形态，仅对列宽敏感。
@@ -476,6 +561,36 @@ fn sqlite_row_to_def(
         updated_at: row
             .try_get("updated_at")
             .map_err(ContentModelError::Database)?,
+    })
+}
+
+fn pg_row_to_entry_snapshot(
+    row: &PgRow,
+) -> std::result::Result<ContentEntrySnapshot, ContentModelError> {
+    let fields: Json<Value> = row.try_get("fields").map_err(ContentModelError::Database)?;
+    Ok(ContentEntrySnapshot {
+        id: row.try_get("id").map_err(ContentModelError::Database)?,
+        fields: fields.0,
+    })
+}
+
+fn mysql_row_to_entry_snapshot(
+    row: &MySqlRow,
+) -> std::result::Result<ContentEntrySnapshot, ContentModelError> {
+    let fields: Json<Value> = row.try_get("fields").map_err(ContentModelError::Database)?;
+    Ok(ContentEntrySnapshot {
+        id: row.try_get("id").map_err(ContentModelError::Database)?,
+        fields: fields.0,
+    })
+}
+
+fn sqlite_row_to_entry_snapshot(
+    row: &SqliteRow,
+) -> std::result::Result<ContentEntrySnapshot, ContentModelError> {
+    let fields: Json<Value> = row.try_get("fields").map_err(ContentModelError::Database)?;
+    Ok(ContentEntrySnapshot {
+        id: row.try_get("id").map_err(ContentModelError::Database)?,
+        fields: fields.0,
     })
 }
 

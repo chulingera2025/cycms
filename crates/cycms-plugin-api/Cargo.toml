@@ -21,6 +21,7 @@ axum = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

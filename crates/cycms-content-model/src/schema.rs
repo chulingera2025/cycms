@@ -14,8 +14,7 @@
 //! `maximum` / `pattern` / `enum`）。`Custom` 字段类型通过 [`FieldTypeRegistry`] 委托
 //! 到插件 handler；若未注册，仅标记 `x-cycms-custom-type` 供后端日志排查。
 //!
-//! TODO!!!: 任务 18 `ApiGateway` 接入 `utoipa` / `/api/docs` 时，本模块生成的片段
-//! 应作为 `Content Type` 下所有 CRUD 端点的请求 / 响应 schema 源。
+//! 该模块生成的片段会直接注入 `/api/docs` 的动态内容类型 CRUD 请求 / 响应 schema。
 
 use serde_json::{Map, Value, json};
 

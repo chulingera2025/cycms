@@ -7,9 +7,8 @@
 //!   仍可运行（数据面不依赖 runtime）。
 //! - 插件目录约定 `<plugins_root>/<plugin_name>/`，manifest 在目录内的 `plugin.toml`，
 //!   `plugin.entry` 是相对插件目录的实现文件路径；enable 时按此约定重建绝对路径。
-//! - v0.1 的 install 不做数据库事务：migration / permission 注册 / 行插入按顺序推进，
-//!   任一步失败直接返回错误，依赖调用方显式 uninstall 清理。
-//!   TODO!!! 任务后续（v0.2）引入 saga 模式实现失败自动回滚。
+//! - install 过程不依赖跨子系统数据库事务，而是按迁移 / 权限 / 记录写入的顺序推进；
+//!   任一步失败都会触发显式补偿回滚，保证不会留下半安装状态。
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -345,26 +344,50 @@ impl PluginManager {
             });
         }
 
-        self.run_plugin_up_migrations(source).await?;
+        if let Err(err) = self.run_plugin_up_migrations(source).await {
+            self.rollback_failed_install(source, false).await?;
+            return Err(err);
+        }
+        let mut should_rollback_permissions = false;
 
         let defs = manifest.permission_definitions();
         if !defs.is_empty() {
-            self.permission_engine
+            if let Err(err) = self
+                .permission_engine
                 .register_permissions(&manifest.plugin.name, defs)
-                .await?;
+                .await
+            {
+                self.rollback_failed_install(source, false).await?;
+                return Err(err);
+            }
+            should_rollback_permissions = true;
         }
 
-        let manifest_value = serde_json::to_value(manifest).map_err(|e| Error::Internal {
-            message: format!("serialize manifest: {e}"),
-            source: None,
-        })?;
+        let manifest_value = match serde_json::to_value(manifest) {
+            Ok(value) => value,
+            Err(err) => {
+                self.rollback_failed_install(source, should_rollback_permissions)
+                    .await?;
+                return Err(Error::Internal {
+                    message: format!("serialize manifest: {err}"),
+                    source: None,
+                });
+            }
+        };
         let row = NewPluginRow {
             name: manifest.plugin.name.clone(),
             version: manifest.plugin.version.clone(),
             kind: manifest.plugin.kind,
             manifest: manifest_value,
         };
-        let record = self.repository.insert(row).await?;
+        let record = match self.repository.insert(row).await {
+            Ok(record) => record,
+            Err(err) => {
+                self.rollback_failed_install(source, should_rollback_permissions)
+                    .await?;
+                return Err(err);
+            }
+        };
         info!(plugin = %record.name, version = %record.version, "plugin installed");
         self.publish_event(EventKind::PluginInstalled, &record, actor_id);
         Ok(PluginInfo::from_record(&record))
@@ -546,21 +569,65 @@ impl PluginManager {
         plugin_name: &str,
         manifest: &PluginManifest,
     ) -> Result<()> {
-        // 传大 count 让 MigrationEngine 回滚该 source 下所有已 applied 的迁移。
-        // v0.1 单插件迁移数不会超过此上限；v0.2 引入按 source 计数接口后替换。
-        const ROLLBACK_SENTINEL: usize = 10_000;
-
         for rel in &manifest.migrations {
             let dir = self.plugins_root.join(plugin_name).join(rel);
             if !dir.exists() {
                 warn!(plugin = %plugin_name, path = %dir.display(), "plugin migration dir missing on uninstall, skipping rollback");
                 continue;
             }
+
+            let rollback_count = self
+                .migration_engine
+                .applied_versions_in_dir(plugin_name, &dir)
+                .await?
+                .len();
+            if rollback_count == 0 {
+                continue;
+            }
+
             self.migration_engine
-                .rollback(plugin_name, &dir, ROLLBACK_SENTINEL)
+                .rollback(plugin_name, &dir, rollback_count)
                 .await?;
         }
         Ok(())
+    }
+
+    async fn rollback_failed_install(
+        &self,
+        source: &DiscoveredPlugin,
+        permissions_registered: bool,
+    ) -> Result<()> {
+        let mut rollback_failures = Vec::new();
+
+        if permissions_registered
+            && let Err(err) = self
+                .permission_engine
+                .unregister_permissions_by_source(&source.manifest.plugin.name)
+                .await
+        {
+            rollback_failures.push(format!("unregister permissions: {err}"));
+        }
+
+        if let Err(err) = self
+            .run_plugin_down_migrations(&source.manifest.plugin.name, &source.manifest)
+            .await
+        {
+            rollback_failures.push(format!("rollback migrations: {err}"));
+        }
+
+        if rollback_failures.is_empty() {
+            info!(plugin = %source.manifest.plugin.name, "rolled back failed plugin install");
+            Ok(())
+        } else {
+            Err(Error::Internal {
+                message: format!(
+                    "failed to rollback plugin install for {}: {}",
+                    source.manifest.plugin.name,
+                    rollback_failures.join("; ")
+                ),
+                source: None,
+            })
+        }
     }
 
     fn publish_event(&self, kind: EventKind, record: &PluginRecord, actor_id: Option<&str>) {

@@ -10,6 +10,7 @@ cycms-core = { workspace = true }
 cycms-events = { workspace = true }
 cycms-plugin-api = { workspace = true }
 cycms-plugin-manager = { workspace = true }
+cycms-native-loader = { path = "../../support/cycms-native-loader" }
 async-trait = { workspace = true }
 axum = { workspace = true }
 tracing = { workspace = true }
@@ -19,6 +20,7 @@ cycms-auth = { workspace = true }
 cycms-config = { workspace = true }
 cycms-content-engine = { workspace = true }
 cycms-content-model = { workspace = true }
+serde_json = { workspace = true }
 cycms-db = { workspace = true }
 cycms-media = { workspace = true }
 cycms-migrate = { workspace = true }

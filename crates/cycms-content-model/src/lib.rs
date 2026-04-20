@@ -9,7 +9,12 @@
 //! 模块结构：
 //! - [`error`]：`ContentModelError` 枚举 + 跨 crate 映射到 `cycms_core::Error`；
 //! - [`model`]：所有数据结构（`ContentTypeDefinition` / `FieldDefinition` / ...）；
-//! - TODO!!!: 后续提交依次加入 `repository` / `validation` / `schema` / `field_type` / `service` / `seed`。
+//! - [`repository`]：内容类型元数据持久化与兼容性检查辅助查询；
+//! - [`validation`]：字段定义与实例值校验；
+//! - [`schema`]：内容类型到 JSON Schema/OpenAPI 片段转换；
+//! - [`field_type`]：自定义字段类型注册点；
+//! - [`service`]：Req 7/8 的编排入口；
+//! - [`seed`]：系统默认类型初始化。
 
 mod error;
 mod field_type;

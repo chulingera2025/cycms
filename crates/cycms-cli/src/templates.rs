@@ -119,6 +119,8 @@ impl Plugin for {struct_name} {{
         Ok(())
     }}
 }}
+
+cycms_plugin_api::export_plugin!({struct_name});
 "#
     )
 }

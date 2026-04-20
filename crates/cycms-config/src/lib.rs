@@ -6,53 +6,82 @@ use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_CONFIG_FILE: &str = "cycms.toml";
 
+/// 应用根配置，对应 `cycms.toml` 的顶层结构。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 #[derive(Default)]
 pub struct AppConfig {
+    /// HTTP 服务监听、限流与 CORS 配置。
     pub server: ServerConfig,
+    /// 数据库连接池与驱动配置。
     pub database: DatabaseConfig,
+    /// 认证、JWT 与 Argon2 参数。
     pub auth: AuthConfig,
+    /// 内容引擎的默认删除策略与分页参数。
     pub content: ContentConfig,
+    /// 媒体上传与删除策略配置。
     pub media: MediaConfig,
+    /// 进程内事件总线配置。
+    pub events: EventsConfig,
+    /// tracing 与审计日志配置。
     pub observability: ObservabilityConfig,
+    /// 插件目录与 Wasm 开关配置。
     pub plugins: PluginsConfig,
 }
 
+/// HTTP 服务端口、限流与 CORS 相关配置。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct ServerConfig {
+    /// 监听地址。
     pub host: String,
+    /// 监听端口。
     pub port: u16,
+    /// 通用与敏感接口限流配额。
     pub rate_limit: RateLimitConfig,
+    /// 跨域配置。
     pub cors: CorsConfig,
 }
 
+/// HTTP 限流参数。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct RateLimitConfig {
+    /// 普通接口每分钟最大请求数。
     pub requests_per_minute: u32,
+    /// 登录、注册、刷新等敏感接口每分钟最大请求数。
     pub sensitive_requests_per_minute: u32,
 }
 
+/// 跨域资源共享配置。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct CorsConfig {
+    /// 允许的来源列表。
     pub allowed_origins: Vec<String>,
+    /// 是否允许携带凭证。
     pub allow_credentials: bool,
+    /// 预检结果缓存秒数。
     pub max_age_secs: u64,
 }
 
+/// 数据库驱动与连接池配置。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct DatabaseConfig {
+    /// 底层数据库驱动。
     pub driver: DatabaseDriver,
+    /// 连接字符串。
     pub url: String,
+    /// 最大连接数。
     pub max_connections: u32,
+    /// 连接获取超时秒数。
     pub connect_timeout_secs: u64,
+    /// 连接空闲超时秒数。
     pub idle_timeout_secs: u64,
 }
 
+/// 支持的数据库驱动类型。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum DatabaseDriver {
@@ -62,28 +91,41 @@ pub enum DatabaseDriver {
     Sqlite,
 }
 
+/// 认证与密码学参数。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct AuthConfig {
+    /// JWT 对称签名密钥。
     pub jwt_secret: String,
+    /// access token 生命周期，单位秒。
     pub access_token_ttl_secs: u64,
+    /// refresh token 生命周期，单位秒。
     pub refresh_token_ttl_secs: u64,
+    /// Argon2id 参数。
     pub argon2: Argon2Config,
 }
 
+/// Argon2id 参数配置。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct Argon2Config {
+    /// 内存成本参数。
     pub m_cost: u32,
+    /// 时间成本参数。
     pub t_cost: u32,
+    /// 并行度参数。
     pub p_cost: u32,
 }
 
+/// 内容模块的默认行为配置。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct ContentConfig {
+    /// 未显式指定时的删除模式。
     pub default_delete_mode: DeleteMode,
+    /// 默认分页大小。
     pub default_page_size: u64,
+    /// 分页大小上限。
     pub max_page_size: u64,
 }
 
@@ -96,24 +138,43 @@ pub enum DeleteMode {
     Hard,
 }
 
+/// 媒体模块配置。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct MediaConfig {
+    /// 上传文件保存目录。
     pub upload_dir: String,
+    /// 允许的最大文件大小，单位字节。
     pub max_file_size: u64,
+    /// 白名单 MIME 列表；空列表表示不限制。
     pub allowed_mime_types: Vec<String>,
     /// 删除有引用的媒体资产时的行为：`"block"` 返回错误，`"warn"` 仅记录警告并继续删除。
     pub on_referenced_delete: String,
 }
 
+/// 进程内事件总线配置。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct EventsConfig {
+    /// 每个 `EventKind` 对应 broadcast channel 的容量。
+    pub channel_capacity: usize,
+    /// 单个 handler 处理一次事件的超时秒数。
+    pub handler_timeout_secs: u64,
+}
+
+/// tracing 与审计日志配置。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct ObservabilityConfig {
+    /// 日志输出格式。
     pub format: LogFormat,
+    /// tracing 过滤级别。
     pub level: String,
+    /// 是否写入审计日志。
     pub audit_enabled: bool,
 }
 
+/// tracing 日志格式。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum LogFormat {
@@ -122,10 +183,13 @@ pub enum LogFormat {
     Pretty,
 }
 
+/// 插件系统配置。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct PluginsConfig {
+    /// 插件根目录。
     pub directory: String,
+    /// 是否启用 Wasm 插件运行时。
     pub wasm_enabled: bool,
 }
 
@@ -216,6 +280,15 @@ impl Default for MediaConfig {
                 "video/mp4".to_owned(),
             ],
             on_referenced_delete: "block".to_owned(),
+        }
+    }
+}
+
+impl Default for EventsConfig {
+    fn default() -> Self {
+        Self {
+            channel_capacity: 256,
+            handler_timeout_secs: 5,
         }
     }
 }
@@ -458,6 +531,10 @@ max_page_size = 200
 [media]
 upload_dir = "media"
 
+[events]
+channel_capacity = 1024
+handler_timeout_secs = 3
+
 [observability]
 format = "json"
 level = "debug"
@@ -485,6 +562,8 @@ wasm_enabled = false
         assert_eq!(config.content.default_page_size, 50);
         assert_eq!(config.content.max_page_size, 200);
         assert_eq!(config.media.upload_dir, "media");
+        assert_eq!(config.events.channel_capacity, 1024);
+        assert_eq!(config.events.handler_timeout_secs, 3);
         assert_eq!(config.observability.format, LogFormat::Json);
         assert_eq!(config.observability.level, "debug");
         assert!(!config.observability.audit_enabled);
@@ -529,6 +608,8 @@ wasm_enabled = false
                     "CYCMS__SERVER__CORS__ALLOWED_ORIGINS",
                     r#"["https://admin.example.com","https://cms.example.com"]"#,
                 ),
+                ("CYCMS__EVENTS__CHANNEL_CAPACITY", "512"),
+                ("CYCMS__EVENTS__HANDLER_TIMEOUT_SECS", "2"),
                 ("CYCMS__OBSERVABILITY__AUDIT_ENABLED", "false"),
                 ("CYCMS__PLUGINS__WASM_ENABLED", "false"),
             ],
@@ -542,8 +623,17 @@ wasm_enabled = false
                 "https://cms.example.com".to_owned(),
             ]
         );
+        assert_eq!(config.events.channel_capacity, 512);
+        assert_eq!(config.events.handler_timeout_secs, 2);
         assert!(!config.observability.audit_enabled);
         assert!(!config.plugins.wasm_enabled);
+    }
+
+    #[test]
+    fn events_defaults_match_runtime_defaults() {
+        let config = AppConfig::default();
+        assert_eq!(config.events.channel_capacity, 256);
+        assert_eq!(config.events.handler_timeout_secs, 5);
     }
 
     #[test]

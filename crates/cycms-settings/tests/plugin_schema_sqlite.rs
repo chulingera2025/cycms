@@ -73,6 +73,54 @@ async fn register_updates_existing_schema() {
 }
 
 #[tokio::test]
+async fn set_validates_value_against_registered_schema() {
+    let mgr = fresh_sqlite_manager().await;
+
+    mgr.register_schema(
+        "blog",
+        json!({
+            "type": "object",
+            "properties": {
+                "api_key": { "type": "string" }
+            },
+            "required": ["api_key"],
+            "additionalProperties": false
+        }),
+    )
+    .await
+    .unwrap();
+
+    mgr.set("blog", "api_key", json!("secret")).await.unwrap();
+
+    let err = mgr.set("blog", "api_key", json!(123)).await.unwrap_err();
+    assert!(matches!(err, Error::ValidationError { .. }), "got: {err:?}");
+}
+
+#[tokio::test]
+async fn set_rejects_keys_not_allowed_by_schema() {
+    let mgr = fresh_sqlite_manager().await;
+
+    mgr.register_schema(
+        "blog",
+        json!({
+            "type": "object",
+            "properties": {
+                "api_key": { "type": "string" }
+            },
+            "additionalProperties": false
+        }),
+    )
+    .await
+    .unwrap();
+
+    let err = mgr
+        .set("blog", "unexpected", json!(true))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, Error::ValidationError { .. }), "got: {err:?}");
+}
+
+#[tokio::test]
 async fn register_rejects_non_object_schema() {
     let mgr = fresh_sqlite_manager().await;
     let err = mgr
@@ -86,7 +134,7 @@ async fn register_rejects_non_object_schema() {
 async fn register_rejects_object_without_type_or_properties() {
     let mgr = fresh_sqlite_manager().await;
     let err = mgr
-        .register_schema("bad", json!({ "title": "only title" }))
+        .register_schema("bad", json!({ "minimum": "not-a-number" }))
         .await
         .unwrap_err();
     assert!(matches!(err, Error::ValidationError { .. }), "got: {err:?}");

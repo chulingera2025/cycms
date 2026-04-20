@@ -16,6 +16,12 @@ pub enum ContentModelError {
     #[error("invalid field definition: {0}")]
     InvalidField(String),
 
+    #[error("content type update blocked for `{api_id}`")]
+    DestructiveChangeBlocked { api_id: String, reasons: Vec<String> },
+
+    #[error("content type delete blocked for `{api_id}`")]
+    DeleteBlocked { api_id: String, reasons: Vec<String> },
+
     #[error("schema violation")]
     SchemaViolation { errors: Vec<FieldViolation> },
 
@@ -41,6 +47,18 @@ impl From<ContentModelError> for Error {
             | ContentModelError::InvalidField(message) => Self::ValidationError {
                 message,
                 details: None,
+            },
+            ContentModelError::DestructiveChangeBlocked { api_id, reasons } => Self::Conflict {
+                message: format!(
+                    "content type `{api_id}` has stored entries incompatible with the requested schema change: {}",
+                    reasons.join("; ")
+                ),
+            },
+            ContentModelError::DeleteBlocked { api_id, reasons } => Self::Conflict {
+                message: format!(
+                    "content type `{api_id}` cannot be deleted yet: {}",
+                    reasons.join("; ")
+                ),
             },
             ContentModelError::DuplicateApiId(api_id) => Self::Conflict {
                 message: format!("content type with api_id `{api_id}` already exists"),

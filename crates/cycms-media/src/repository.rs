@@ -44,15 +44,20 @@ const MYSQL_DELETE: &str = "DELETE FROM media_assets WHERE id = ?";
 const SQLITE_DELETE: &str = "DELETE FROM media_assets WHERE id = ?";
 
 // ─── COUNT REFERENCES ─────────────────────────────────────────────────────
-// TODO!!!: 当前使用 LIKE 文本扫描作简单引用检测，大表需为 fields 列添加全文索引
 
-const PG_COUNT_REFS: &str = "SELECT COUNT(*) FROM content_entries WHERE fields::text LIKE $1";
+const PG_COUNT_REFS: &str = "SELECT COUNT(*) FROM content_entries \
+    WHERE jsonb_path_exists( \
+        fields, \
+        '$.** ? (@ == $asset_id)', \
+        jsonb_build_object('asset_id', to_jsonb($1::text)) \
+    )";
 
 const MYSQL_COUNT_REFS: &str =
-    "SELECT COUNT(*) FROM content_entries WHERE CAST(fields AS CHAR) LIKE ?";
+    "SELECT COUNT(*) FROM content_entries WHERE JSON_SEARCH(fields, 'one', ?) IS NOT NULL";
 
-const SQLITE_COUNT_REFS: &str =
-    "SELECT COUNT(*) FROM content_entries WHERE CAST(fields AS TEXT) LIKE ?";
+const SQLITE_COUNT_REFS: &str = "SELECT COUNT(DISTINCT ce.id) \
+    FROM content_entries ce, json_tree(ce.fields) jt \
+    WHERE jt.type = 'text' AND jt.value = ?";
 
 // ─── LIST SELECT PREFIXES ─────────────────────────────────────────────────
 
@@ -152,6 +157,20 @@ fn bind_sqlite<'q>(
     q.bind(s)
 }
 
+fn escape_like_pattern(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        match ch {
+            '%' | '_' | '\\' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
 // ─── List plan builder ────────────────────────────────────────────────────
 
 struct MediaListPlan {
@@ -174,9 +193,8 @@ fn build_list_plan(
         params.push(mime.clone());
     }
     if let Some(fname) = &query.filename_contains {
-        conditions.push("(filename LIKE ? OR original_filename LIKE ?)".to_owned());
-        // TODO!!!: 对用户输入的 % 和 _ 字符进行转义，防止 LIKE 注入
-        let pattern = format!("%{fname}%");
+        conditions.push("(filename LIKE ? ESCAPE '\\' OR original_filename LIKE ? ESCAPE '\\')".to_owned());
+        let pattern = format!("%{}%", escape_like_pattern(fname));
         params.push(pattern.clone());
         params.push(pattern);
     }
@@ -319,24 +337,23 @@ impl MediaAssetRepository {
 
     /// 统计在 `content_entries.fields` 中引用该资产 ID 的条目数。
     pub async fn count_references(&self, asset_id: &str) -> Result<u64, MediaError> {
-        let pattern = format!("%{asset_id}%");
         let count: i64 = match self.pool.as_ref() {
             DatabasePool::Postgres(pool) => sqlx::query(PG_COUNT_REFS)
-                .bind(&pattern)
+                .bind(asset_id)
                 .fetch_one(pool)
                 .await
                 .map_err(MediaError::Database)?
                 .try_get(0)
                 .map_err(MediaError::Database)?,
             DatabasePool::MySql(pool) => sqlx::query(MYSQL_COUNT_REFS)
-                .bind(&pattern)
+                .bind(asset_id)
                 .fetch_one(pool)
                 .await
                 .map_err(MediaError::Database)?
                 .try_get(0)
                 .map_err(MediaError::Database)?,
             DatabasePool::Sqlite(pool) => sqlx::query(SQLITE_COUNT_REFS)
-                .bind(&pattern)
+                .bind(asset_id)
                 .fetch_one(pool)
                 .await
                 .map_err(MediaError::Database)?

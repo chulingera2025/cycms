@@ -1,16 +1,17 @@
-//! [`NativePluginRuntime`] 实现：把静态注册的 [`Plugin`] trait 对象装配成
-//! [`PluginRuntime`] 可调度的运行时单元。
+//! [`NativePluginRuntime`] 实现：把静态注册的 [`Plugin`] trait 对象或导出工厂函数的
+//! 动态库装配成 [`PluginRuntime`] 可调度的运行时单元。
 //!
-//! - 「静态注册」：v0.1 不做 `libloading` 动态加载，Native 插件以普通 Rust crate
-//!   编译进宿主，Kernel / CLI 启动阶段通过 [`NativePluginRuntime::register_plugin`]
-//!   交付 `Arc<dyn Plugin>`，`PluginManager::install/enable` 再按 manifest 名查找并
-//!   调度生命周期钩子。
+//! - 「静态注册优先」：Kernel / CLI 启动阶段可继续通过
+//!   [`NativePluginRuntime::register_plugin`] 交付 `Arc<dyn Plugin>`；若未注册同名插件，
+//!   runtime 会尝试按 manifest `entry` 动态加载 `.so` 并调用导出的工厂函数。
 //! - 事件：`on_enable` 成功之后按 `(EventKind, handler)` 对逐个订阅到 `EventBus`，
 //!   订阅句柄与插件绑定；`unload` 统一 abort。
 //! - 服务：`Plugin::services()` 以 `{plugin}.{svc}` 为 key 注册到 `ServiceRegistry`，
 //!   `unload` 时成对注销。
 //! - 路由：`Plugin::routes()` 收集后缓存，`routes_of` / `all_routes` 暴露给任务 18 的
 //!   `ApiGateway` 合并到主路由表。
+//! - 动态库模式目前只保证生命周期钩子跨 dylib 可用；若插件需要 routes / services /
+//!   event handlers，仍应使用宿主静态注册路径。
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -20,6 +21,7 @@ use async_trait::async_trait;
 use axum::Router;
 use cycms_core::{Error, Result};
 use cycms_events::SubscriptionHandle;
+use cycms_native_loader::DynamicPluginLibrary;
 use cycms_plugin_api::{Plugin, PluginContext, PluginRouteDoc};
 use cycms_plugin_manager::{PluginKind, PluginManifest, PluginRuntime};
 use tracing::{info, warn};
@@ -39,6 +41,12 @@ struct LoadedPlugin {
     service_keys: Vec<String>,
     routes: Option<Router>,
     route_docs: Vec<PluginRouteDoc>,
+    dynamic_library: Option<DynamicPluginLibrary>,
+}
+
+struct PreparedPlugin {
+    plugin: Arc<dyn Plugin>,
+    dynamic_library: Option<DynamicPluginLibrary>,
 }
 
 impl NativePluginRuntime {
@@ -97,18 +105,56 @@ impl NativePluginRuntime {
         pairs
     }
 
-    fn factory_for(&self, name: &str) -> Result<Arc<dyn Plugin>> {
+    fn factory_for(&self, name: &str) -> Option<Arc<dyn Plugin>> {
         let factories = self
             .factories
             .read()
             .unwrap_or_else(PoisonError::into_inner);
-        factories
-            .get(name)
-            .cloned()
-            .ok_or_else(|| Error::PluginError {
-                message: format!("no native plugin registered with name {name:?}"),
+        factories.get(name).cloned()
+    }
+
+    fn prepare_plugin(&self, manifest: &PluginManifest, entry: &Path) -> Result<PreparedPlugin> {
+        let name = manifest.plugin.name.as_str();
+        if let Some(plugin) = self.factory_for(name) {
+            return Ok(PreparedPlugin {
+                plugin,
+                dynamic_library: None,
+            });
+        }
+
+        let dynamic_library = DynamicPluginLibrary::open(entry).map_err(map_dynamic_load_error)?;
+        let plugin: Arc<dyn Plugin> = dynamic_library
+            .instantiate()
+            .map(Arc::from)
+            .map_err(map_dynamic_load_error)?;
+
+        if plugin.name() != name {
+            return Err(Error::PluginError {
+                message: format!(
+                    "native plugin symbol in {} returned name {:?}, expected {:?}",
+                    entry.display(),
+                    plugin.name(),
+                    name
+                ),
                 source: None,
-            })
+            });
+        }
+        if plugin.version() != manifest.plugin.version {
+            return Err(Error::PluginError {
+                message: format!(
+                    "native plugin {} version mismatch: manifest={}, library={}",
+                    name,
+                    manifest.plugin.version,
+                    plugin.version()
+                ),
+                source: None,
+            });
+        }
+
+        Ok(PreparedPlugin {
+            plugin,
+            dynamic_library: Some(dynamic_library),
+        })
     }
 }
 
@@ -121,7 +167,7 @@ impl PluginRuntime for NativePluginRuntime {
     async fn load(
         &self,
         manifest: &PluginManifest,
-        _entry: &Path,
+        entry: &Path,
         ctx: Arc<PluginContext>,
     ) -> Result<()> {
         let name = manifest.plugin.name.as_str();
@@ -134,8 +180,16 @@ impl PluginRuntime for NativePluginRuntime {
             }
         }
 
-        let plugin = self.factory_for(name)?;
-        plugin.on_enable(&ctx).await?;
+        let PreparedPlugin {
+            plugin,
+            dynamic_library,
+        } = self.prepare_plugin(manifest, entry)?;
+
+        if let Err(err) = plugin.on_enable(&ctx).await {
+            drop(plugin);
+            drop(dynamic_library);
+            return Err(err);
+        }
 
         let mut subscriptions: Vec<SubscriptionHandle> = Vec::new();
         for (kind, handler) in plugin.event_handlers() {
@@ -150,6 +204,8 @@ impl PluginRuntime for NativePluginRuntime {
                 warn!(plugin = %name, error = %err, "rolling back native plugin load");
                 rollback_registrations(&ctx, subscriptions, &service_keys);
                 // on_enable 已经副作用化执行过，这里无法撤回，调用方自行 uninstall 清理。
+                drop(plugin);
+                drop(dynamic_library);
                 return Err(err.into());
             }
             service_keys.push(key);
@@ -168,6 +224,7 @@ impl PluginRuntime for NativePluginRuntime {
                 service_keys,
                 routes,
                 route_docs,
+                dynamic_library,
             },
         );
         info!(plugin = %name, "native plugin loaded");
@@ -179,27 +236,25 @@ impl PluginRuntime for NativePluginRuntime {
             let mut loaded = self.loaded.write().unwrap_or_else(PoisonError::into_inner);
             loaded.remove(plugin_name)
         };
-        let Some(LoadedPlugin {
-            plugin,
-            ctx,
-            subscriptions,
-            service_keys,
-            routes: _,
-            route_docs: _,
-        }) = entry
+        let Some(mut loaded_plugin) = entry
         else {
             return Ok(());
         };
 
-        for handle in subscriptions {
+        for handle in loaded_plugin.subscriptions.drain(..) {
             handle.unsubscribe();
         }
 
-        let disable_result = plugin.on_disable(&ctx).await;
+        let disable_result = loaded_plugin.plugin.on_disable(&loaded_plugin.ctx).await;
 
-        for key in &service_keys {
-            ctx.service_registry.unregister(key);
+        for key in &loaded_plugin.service_keys {
+            loaded_plugin.ctx.service_registry.unregister(key);
         }
+
+        let plugin = loaded_plugin.plugin;
+        let dynamic_library = loaded_plugin.dynamic_library.take();
+        drop(plugin);
+        drop(dynamic_library);
 
         match disable_result {
             Ok(()) => {
@@ -231,5 +286,12 @@ fn rollback_registrations(
     }
     for key in service_keys {
         ctx.service_registry.unregister(key);
+    }
+}
+
+fn map_dynamic_load_error(source: cycms_native_loader::DynamicPluginLoadError) -> Error {
+    Error::PluginError {
+        message: source.to_string(),
+        source: Some(Box::new(source)),
     }
 }

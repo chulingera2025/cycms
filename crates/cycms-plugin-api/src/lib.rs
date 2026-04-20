@@ -12,10 +12,14 @@
 
 mod context;
 mod error;
+mod native;
 mod plugin;
 mod registry;
 
 pub use context::PluginContext;
 pub use error::RegistryError;
+#[doc(hidden)]
+pub use native::{into_exported_dynamic_plugin, into_ffi_plugin_ptr};
+pub use native::{NATIVE_PLUGIN_CREATE_SYMBOL, NATIVE_PLUGIN_CREATE_SYMBOL_NAME};
 pub use plugin::{Plugin, PluginRouteDoc};
 pub use registry::ServiceRegistry;

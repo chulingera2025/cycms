@@ -26,6 +26,7 @@ sqlx = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time", "rt"] }
 tracing = { workspace = true }
+chrono = { workspace = true }
 uuid = { workspace = true }
 wasmtime = { version = "43", features = ["component-model", "async", "cache"] }
 wasmtime-wasi = { version = "43" }
