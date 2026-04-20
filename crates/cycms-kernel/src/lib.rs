@@ -16,6 +16,7 @@ use cycms_db::DatabasePool;
 use cycms_events::EventBus;
 use cycms_media::MediaManager;
 use cycms_migrate::MigrationEngine;
+use cycms_observability::{AuditLogger, init_tracing, request_span_middleware};
 use cycms_permission::PermissionEngine;
 use cycms_plugin_api::{PluginContext, ServiceRegistry};
 use cycms_plugin_manager::{PluginManager, PluginManagerConfig, PluginRuntime};
@@ -28,10 +29,8 @@ use semver::Version;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tower::ServiceBuilder;
-use tower_http::LatencyUnit;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
-use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
-use tracing::{Level, info, warn};
+use tracing::{info, warn};
 
 /// 全局应用上下文，Kernel bootstrap 后在所有组件间共享。
 #[non_exhaustive]
@@ -113,9 +112,14 @@ impl Kernel {
             migration_engine.run_system_migrations(dir).await?;
         }
 
+        let event_bus = Arc::new(EventBus::new());
+        if self.config.observability.audit_enabled {
+            let audit_logger = Arc::new(AuditLogger::new(Arc::clone(&db)));
+            let _subscriptions = audit_logger.subscribe_all(&event_bus);
+        }
+
         let auth_engine = Arc::new(AuthEngine::new(Arc::clone(&db), self.config.auth.clone())?);
         let permission_engine = Arc::new(PermissionEngine::new(Arc::clone(&db)));
-        let event_bus = Arc::new(EventBus::new());
         let settings_manager = Arc::new(SettingsManager::new(Arc::clone(&db)));
         let field_type_registry = Arc::new(FieldTypeRegistry::new());
         let content_model = Arc::new(ContentModelRegistry::new(
@@ -224,6 +228,7 @@ impl Kernel {
     /// # Errors
     /// 端口绑定失败或运行时错误时返回错误。
     pub async fn serve(self) -> Result<()> {
+        init_tracing(&self.config.observability)?;
         let migrations_dir = default_system_migrations_dir();
         let ctx = self.bootstrap(Some(&migrations_dir)).await?;
         let api_state = build_api_state(&ctx);
@@ -233,15 +238,7 @@ impl Kernel {
         ));
         let app = cycms_api::build_router(api_state).layer(
             ServiceBuilder::new()
-                .layer(
-                    TraceLayer::new_for_http()
-                        .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
-                        .on_response(
-                            DefaultOnResponse::new()
-                                .level(Level::INFO)
-                                .latency_unit(LatencyUnit::Micros),
-                        ),
-                )
+                .layer(middleware::from_fn(request_span_middleware))
                 .layer(middleware::from_fn_with_state(rate_limit, rate_limit_middleware))
                 .layer(build_cors_layer(&ctx.config.server.cors)?),
         );
@@ -354,6 +351,7 @@ fn build_api_state(ctx: &AppContext) -> Arc<cycms_api::ApiState> {
         Arc::clone(&ctx.config),
         Arc::clone(&ctx.auth_engine),
         Arc::clone(&ctx.permission_engine),
+        Arc::clone(&ctx.event_bus),
         Arc::clone(&ctx.content_model),
         Arc::clone(&ctx.content_engine),
         Arc::clone(&ctx.revision_manager),

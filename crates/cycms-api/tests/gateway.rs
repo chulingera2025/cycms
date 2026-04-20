@@ -68,6 +68,7 @@ wasm_enabled = true
         Arc::clone(&ctx.config),
         Arc::clone(&ctx.auth_engine),
         Arc::clone(&ctx.permission_engine),
+        Arc::clone(&ctx.event_bus),
         Arc::clone(&ctx.content_model),
         Arc::clone(&ctx.content_engine),
         Arc::clone(&ctx.revision_manager),

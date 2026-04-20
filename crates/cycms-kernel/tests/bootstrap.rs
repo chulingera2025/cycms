@@ -33,6 +33,9 @@ url = "sqlite::memory:"
 max_connections = 1
 connect_timeout_secs = 5
 idle_timeout_secs = 60
+
+[observability]
+audit_enabled = false
 "#,
     )
     .unwrap();
@@ -161,6 +164,9 @@ url = "sqlite::memory:"
 max_connections = 1
 connect_timeout_secs = 5
 idle_timeout_secs = 60
+
+[observability]
+audit_enabled = false
 "#,
     )
     .unwrap();

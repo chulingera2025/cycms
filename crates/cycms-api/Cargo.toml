@@ -15,6 +15,7 @@ tracing = { workspace = true }
 cycms-core = { workspace = true }
 cycms-config = { workspace = true }
 cycms-auth = { workspace = true }
+cycms-events = { workspace = true }
 cycms-permission = { workspace = true }
 cycms-content-model = { workspace = true }
 cycms-content-engine = { workspace = true }

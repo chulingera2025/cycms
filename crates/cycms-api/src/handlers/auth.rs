@@ -6,8 +6,10 @@ use axum::routing::{get, post};
 use axum::{Router, response::IntoResponse};
 use cycms_auth::{Authenticated, CreateUserInput, LoginRequest, TokenPair};
 use cycms_core::{Error, Result};
+use cycms_events::{Event, EventKind};
 use cycms_permission::{SUPER_ADMIN_ROLE, seed_defaults};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use crate::common::{UserResponse, created_json, to_user_response};
 use crate::state::ApiState;
@@ -87,6 +89,18 @@ pub async fn register(
         .await?;
 
     let response = to_user_response(&state, user).await?;
+    state.event_bus.publish(
+        Event::new(EventKind::UserCreated)
+            .with_actor(&response.id)
+            .with_payload(json!({
+                "id": response.id.clone(),
+                "username": response.username.clone(),
+                "email": response.email.clone(),
+                "role_ids": response.role_ids.clone(),
+                "bootstrap": true,
+                "result": "success",
+            })),
+    );
     Ok(created_json(response))
 }
 

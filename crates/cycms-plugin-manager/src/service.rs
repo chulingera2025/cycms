@@ -151,6 +151,154 @@ impl PluginManager {
     /// - [`cycms_core::Error::Conflict`]：同名插件已安装
     /// - [`cycms_core::Error::Internal`]：DB / 迁移失败
     pub async fn install(&self, source: &DiscoveredPlugin) -> Result<PluginInfo> {
+        self.install_as(source, None).await
+    }
+
+    /// 启用已安装插件：依赖检查 → runtime.load → 状态翻转 → `ServiceRegistry` 放行。
+    ///
+    /// # Errors
+    /// - [`cycms_core::Error::NotFound`]：未找到插件
+    /// - [`cycms_core::Error::ValidationError`]：依赖未启用
+    /// - [`cycms_core::Error::PluginError`]：对应 `kind` 无已注册 runtime
+    /// - runtime.load 返回的任何错误
+    pub async fn enable(&self, name: &str) -> Result<()> {
+        self.enable_as(name, None).await
+    }
+
+    /// 启用已安装插件，并把操作者写入 lifecycle 事件。
+    pub async fn enable_as(&self, name: &str, actor_id: Option<&str>) -> Result<()> {
+        let record = self.require_record(name).await?;
+        self.activate_record(&record, true, true, actor_id).await
+    }
+
+    /// 根据数据库中的持久化状态恢复所有已启用插件。
+    ///
+    /// 该方法在进程启动时使用：按依赖拓扑顺序加载 runtime，但不重复写 DB 状态、
+    /// 不重复发布 lifecycle 事件。
+    ///
+    /// # Errors
+    /// 任一已启用插件的 manifest 解析、依赖校验或 runtime load 失败时返回错误。
+    pub async fn restore_enabled_plugins(&self) -> Result<()> {
+        let records = self.repository.list().await?;
+        let mut manifests = Vec::new();
+        let mut enabled_records = BTreeMap::<String, PluginRecord>::new();
+
+        for record in records {
+            if record.status != PluginStatus::Enabled {
+                continue;
+            }
+            let manifest = Self::manifest_from_record(&record)?;
+            manifests.push(manifest);
+            enabled_records.insert(record.name.clone(), record);
+        }
+
+        let order = topological_order(&manifests)?;
+        for plugin_name in order {
+            let record = enabled_records
+                .get(&plugin_name)
+                .expect("topological order must refer to enabled plugin records");
+            self.activate_record(record, false, false, None).await?;
+        }
+
+        Ok(())
+    }
+
+    /// 禁用已启用插件。存在 enabled 依赖方时，只在 `force` 为 `true` 时级联禁用，
+    /// 否则返回 [`cycms_core::Error::Conflict`]。
+    ///
+    /// # Errors
+    /// - [`cycms_core::Error::NotFound`]：未找到插件
+    /// - [`cycms_core::Error::Conflict`]：存在依赖方且未开启 `force`
+    /// - runtime.unload 返回的任何错误
+    pub async fn disable(&self, name: &str, force: bool) -> Result<()> {
+        self.disable_as(name, force, None).await
+    }
+
+    /// 禁用已启用插件，并把操作者写入 lifecycle 事件。
+    pub async fn disable_as(&self, name: &str, force: bool, actor_id: Option<&str>) -> Result<()> {
+        Box::pin(self.disable_internal(name, force, actor_id.map(ToOwned::to_owned))).await
+    }
+
+    async fn disable_internal(&self, name: &str, force: bool, actor_id: Option<String>) -> Result<()> {
+        let record = self.require_record(name).await?;
+        if record.status == PluginStatus::Disabled {
+            return Ok(());
+        }
+
+        let dependents = self.enabled_dependents_of(name).await?;
+        if !dependents.is_empty() {
+            if !force {
+                return Err(Error::Conflict {
+                    message: format!(
+                        "plugin {name} has enabled dependents: {dependents:?}; \
+                         pass force=true to cascade disable"
+                    ),
+                });
+            }
+            for dep in dependents {
+                Box::pin(self.disable_internal(&dep, true, actor_id.clone())).await?;
+            }
+        }
+
+        let runtime = self.runtime_for(record.kind)?;
+        runtime.unload(name).await?;
+
+        self.repository
+            .update_status(name, PluginStatus::Disabled)
+            .await?;
+        self.service_registry.set_unavailable(name);
+        info!(plugin = %name, "plugin disabled");
+        self.publish_event(EventKind::PluginDisabled, &record, actor_id.as_deref());
+        Ok(())
+    }
+
+    /// 卸载插件：若处于 enabled 则先级联 disable，再执行 down migration、
+    /// 注销权限 / settings schema，最后删除记录。
+    ///
+    /// # Errors
+    /// 底层任一步骤失败均向上抛出。
+    pub async fn uninstall(&self, name: &str) -> Result<()> {
+        self.uninstall_as(name, None).await
+    }
+
+    /// 卸载插件，并把操作者写入 lifecycle 事件。
+    pub async fn uninstall_as(&self, name: &str, actor_id: Option<&str>) -> Result<()> {
+        let record = self.require_record(name).await?;
+        if record.status == PluginStatus::Enabled {
+            self.disable_as(name, true, actor_id).await?;
+        }
+        let manifest = Self::manifest_from_record(&record)?;
+        self.run_plugin_down_migrations(name, &manifest).await?;
+
+        let removed_perms = self
+            .permission_engine
+            .unregister_permissions_by_source(name)
+            .await
+            .unwrap_or_else(|e| {
+                warn!(plugin = %name, error = %e, "failed to unregister permissions");
+                0
+            });
+        let _ = self
+            .settings_manager
+            .unregister_schema(name)
+            .await
+            .unwrap_or_else(|e| {
+                warn!(plugin = %name, error = %e, "failed to unregister settings schema");
+                false
+            });
+
+        self.repository.delete(name).await?;
+        info!(
+            plugin = %name,
+            removed_permissions = removed_perms,
+            "plugin uninstalled"
+        );
+        self.publish_event(EventKind::PluginUninstalled, &record, actor_id);
+        Ok(())
+    }
+
+    /// 安装插件，并把操作者写入 lifecycle 事件。
+    pub async fn install_as(&self, source: &DiscoveredPlugin, actor_id: Option<&str>) -> Result<PluginInfo> {
         let manifest = &source.manifest;
         check_host_compatibility(manifest, &self.cycms_version)?;
         self.check_dependencies_installed(manifest).await?;
@@ -187,136 +335,8 @@ impl PluginManager {
         };
         let record = self.repository.insert(row).await?;
         info!(plugin = %record.name, version = %record.version, "plugin installed");
-        self.publish_event(EventKind::PluginInstalled, &record);
+        self.publish_event(EventKind::PluginInstalled, &record, actor_id);
         Ok(PluginInfo::from_record(&record))
-    }
-
-    /// 启用已安装插件：依赖检查 → runtime.load → 状态翻转 → `ServiceRegistry` 放行。
-    ///
-    /// # Errors
-    /// - [`cycms_core::Error::NotFound`]：未找到插件
-    /// - [`cycms_core::Error::ValidationError`]：依赖未启用
-    /// - [`cycms_core::Error::PluginError`]：对应 `kind` 无已注册 runtime
-    /// - runtime.load 返回的任何错误
-    pub async fn enable(&self, name: &str) -> Result<()> {
-        let record = self.require_record(name).await?;
-        self.activate_record(&record, true, true).await
-    }
-
-    /// 根据数据库中的持久化状态恢复所有已启用插件。
-    ///
-    /// 该方法在进程启动时使用：按依赖拓扑顺序加载 runtime，但不重复写 DB 状态、
-    /// 不重复发布 lifecycle 事件。
-    ///
-    /// # Errors
-    /// 任一已启用插件的 manifest 解析、依赖校验或 runtime load 失败时返回错误。
-    pub async fn restore_enabled_plugins(&self) -> Result<()> {
-        let records = self.repository.list().await?;
-        let mut manifests = Vec::new();
-        let mut enabled_records = BTreeMap::<String, PluginRecord>::new();
-
-        for record in records {
-            if record.status != PluginStatus::Enabled {
-                continue;
-            }
-            let manifest = Self::manifest_from_record(&record)?;
-            manifests.push(manifest);
-            enabled_records.insert(record.name.clone(), record);
-        }
-
-        let order = topological_order(&manifests)?;
-        for plugin_name in order {
-            let record = enabled_records
-                .get(&plugin_name)
-                .expect("topological order must refer to enabled plugin records");
-            self.activate_record(record, false, false).await?;
-        }
-
-        Ok(())
-    }
-
-    /// 禁用已启用插件。存在 enabled 依赖方时，只在 `force` 为 `true` 时级联禁用，
-    /// 否则返回 [`cycms_core::Error::Conflict`]。
-    ///
-    /// # Errors
-    /// - [`cycms_core::Error::NotFound`]：未找到插件
-    /// - [`cycms_core::Error::Conflict`]：存在依赖方且未开启 `force`
-    /// - runtime.unload 返回的任何错误
-    pub async fn disable(&self, name: &str, force: bool) -> Result<()> {
-        Box::pin(self.disable_internal(name, force)).await
-    }
-
-    async fn disable_internal(&self, name: &str, force: bool) -> Result<()> {
-        let record = self.require_record(name).await?;
-        if record.status == PluginStatus::Disabled {
-            return Ok(());
-        }
-
-        let dependents = self.enabled_dependents_of(name).await?;
-        if !dependents.is_empty() {
-            if !force {
-                return Err(Error::Conflict {
-                    message: format!(
-                        "plugin {name} has enabled dependents: {dependents:?}; \
-                         pass force=true to cascade disable"
-                    ),
-                });
-            }
-            for dep in dependents {
-                Box::pin(self.disable_internal(&dep, true)).await?;
-            }
-        }
-
-        let runtime = self.runtime_for(record.kind)?;
-        runtime.unload(name).await?;
-
-        self.repository
-            .update_status(name, PluginStatus::Disabled)
-            .await?;
-        self.service_registry.set_unavailable(name);
-        info!(plugin = %name, "plugin disabled");
-        self.publish_event(EventKind::PluginDisabled, &record);
-        Ok(())
-    }
-
-    /// 卸载插件：若处于 enabled 则先级联 disable，再执行 down migration、
-    /// 注销权限 / settings schema，最后删除记录。
-    ///
-    /// # Errors
-    /// 底层任一步骤失败均向上抛出。
-    pub async fn uninstall(&self, name: &str) -> Result<()> {
-        let record = self.require_record(name).await?;
-        if record.status == PluginStatus::Enabled {
-            self.disable(name, true).await?;
-        }
-        let manifest = Self::manifest_from_record(&record)?;
-        self.run_plugin_down_migrations(name, &manifest).await?;
-
-        let removed_perms = self
-            .permission_engine
-            .unregister_permissions_by_source(name)
-            .await
-            .unwrap_or_else(|e| {
-                warn!(plugin = %name, error = %e, "failed to unregister permissions");
-                0
-            });
-        let _ = self
-            .settings_manager
-            .unregister_schema(name)
-            .await
-            .unwrap_or_else(|e| {
-                warn!(plugin = %name, error = %e, "failed to unregister settings schema");
-                false
-            });
-
-        self.repository.delete(name).await?;
-        info!(
-            plugin = %name,
-            removed_permissions = removed_perms,
-            "plugin uninstalled"
-        );
-        self.publish_event(EventKind::PluginUninstalled, &record);
-        Ok(())
     }
 
     /// 列出所有已安装插件。返回顺序与 [`PluginRepository::list`] 一致（按 name 升序）。
@@ -333,6 +353,7 @@ impl PluginManager {
         record: &PluginRecord,
         persist_status: bool,
         emit_event: bool,
+        actor_id: Option<&str>,
     ) -> Result<()> {
         let manifest = Self::manifest_from_record(record)?;
         self.check_dependencies_enabled(&manifest).await?;
@@ -359,7 +380,7 @@ impl PluginManager {
 
         if emit_event {
             info!(plugin = %record.name, "plugin enabled");
-            self.publish_event(EventKind::PluginEnabled, record);
+            self.publish_event(EventKind::PluginEnabled, record, actor_id);
         } else if !already_loaded {
             info!(plugin = %record.name, "plugin restored from persisted enabled state");
         }
@@ -511,12 +532,18 @@ impl PluginManager {
         Ok(())
     }
 
-    fn publish_event(&self, kind: EventKind, record: &PluginRecord) {
-        let event = Event::new(kind).with_payload(json!({
+    fn publish_event(&self, kind: EventKind, record: &PluginRecord, actor_id: Option<&str>) {
+        let event = Event::new(kind)
+        .with_payload(json!({
             "name": record.name,
             "version": record.version,
             "kind": record.kind.as_str(),
         }));
+        let event = if let Some(actor_id) = actor_id {
+            event.with_actor(actor_id)
+        } else {
+            event
+        };
         self.event_bus.publish(event);
     }
 }

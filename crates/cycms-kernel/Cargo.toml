@@ -21,6 +21,7 @@ cycms-publish = { workspace = true }
 cycms-media = { workspace = true }
 cycms-api = { workspace = true }
 cycms-openapi = { workspace = true }
+cycms-observability = { workspace = true }
 cycms-plugin-api = { workspace = true }
 cycms-plugin-manager = { workspace = true }
 cycms-plugin-native = { workspace = true }

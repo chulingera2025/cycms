@@ -4,6 +4,7 @@ use cycms_auth::AuthEngine;
 use cycms_config::AppConfig;
 use cycms_content_engine::ContentEngine;
 use cycms_content_model::ContentModelRegistry;
+use cycms_events::EventBus;
 use cycms_media::MediaManager;
 use cycms_permission::PermissionEngine;
 use cycms_plugin_api::ServiceRegistry;
@@ -19,6 +20,7 @@ pub struct ApiState {
     pub config: Arc<AppConfig>,
     pub auth_engine: Arc<AuthEngine>,
     pub permission_engine: Arc<PermissionEngine>,
+    pub event_bus: Arc<EventBus>,
     pub content_model: Arc<ContentModelRegistry>,
     pub content_engine: Arc<ContentEngine>,
     pub revision_manager: Arc<RevisionManager>,
@@ -38,6 +40,7 @@ impl ApiState {
         config: Arc<AppConfig>,
         auth_engine: Arc<AuthEngine>,
         permission_engine: Arc<PermissionEngine>,
+        event_bus: Arc<EventBus>,
         content_model: Arc<ContentModelRegistry>,
         content_engine: Arc<ContentEngine>,
         revision_manager: Arc<RevisionManager>,
@@ -53,6 +56,7 @@ impl ApiState {
             config,
             auth_engine,
             permission_engine,
+            event_bus,
             content_model,
             content_engine,
             revision_manager,

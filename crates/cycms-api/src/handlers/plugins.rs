@@ -77,11 +77,12 @@ pub async fn install_plugin(
 ) -> Result<(StatusCode, Json<PluginInfoResponse>)> {
     require_permission(&state, &claims, "plugin.lifecycle.manage", None).await?;
     let plugin_manager = Arc::clone(&state.plugin_manager);
+    let actor_id = claims.sub.clone();
     let runtime_handle = tokio::runtime::Handle::current();
     let info = tokio::task::spawn_blocking(move || -> Result<PluginInfo> {
         let directory = PathBuf::from(request.path);
         let discovered = discover_plugin_dir(&directory)?;
-        runtime_handle.block_on(async move { plugin_manager.install(&discovered).await })
+        runtime_handle.block_on(async move { plugin_manager.install_as(&discovered, Some(&actor_id)).await })
     })
     .await
     .map_err(|error| Error::Internal {
@@ -97,7 +98,7 @@ pub async fn enable_plugin(
     Path(name): Path<String>,
 ) -> Result<Json<PluginInfoResponse>> {
     require_permission(&state, &claims, "plugin.lifecycle.manage", None).await?;
-    state.plugin_manager.enable(&name).await?;
+    state.plugin_manager.enable_as(&name, Some(&claims.sub)).await?;
     let plugin = state
         .plugin_manager
         .list()
@@ -119,7 +120,7 @@ pub async fn disable_plugin(
     require_permission(&state, &claims, "plugin.lifecycle.manage", None).await?;
     state
         .plugin_manager
-        .disable(&name, request.force.unwrap_or(false))
+        .disable_as(&name, request.force.unwrap_or(false), Some(&claims.sub))
         .await?;
     let plugin = state
         .plugin_manager
@@ -140,9 +141,10 @@ pub async fn uninstall_plugin(
 ) -> Result<StatusCode> {
     require_permission(&state, &claims, "plugin.lifecycle.manage", None).await?;
     let plugin_manager = Arc::clone(&state.plugin_manager);
+    let actor_id = claims.sub.clone();
     let runtime_handle = tokio::runtime::Handle::current();
     tokio::task::spawn_blocking(move || -> Result<()> {
-        runtime_handle.block_on(async move { plugin_manager.uninstall(&name).await })
+        runtime_handle.block_on(async move { plugin_manager.uninstall_as(&name, Some(&actor_id)).await })
     })
     .await
     .map_err(|error| Error::Internal {

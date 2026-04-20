@@ -8,7 +8,9 @@ use axum::routing::get;
 use axum::{Router, response::Response};
 use cycms_auth::{Authenticated, CreateUserInput};
 use cycms_core::{Error, Result};
+use cycms_events::{Event, EventKind};
 use serde::Deserialize;
+use serde_json::json;
 
 use crate::common::{
     UserResponse, created_json, hash_password_for_api, require_permission, sync_user_roles,
@@ -92,7 +94,19 @@ pub async fn create_user(
             message: "created user not found on read-back".to_owned(),
             source: None,
         })?;
-    Ok(created_json(to_user_response(&state, current).await?))
+    let response = to_user_response(&state, current).await?;
+    state.event_bus.publish(
+        Event::new(EventKind::UserCreated)
+            .with_actor(&claims.sub)
+            .with_payload(json!({
+                "id": response.id.clone(),
+                "username": response.username.clone(),
+                "email": response.email.clone(),
+                "role_ids": response.role_ids.clone(),
+                "result": "success",
+            })),
+    );
+    Ok(created_json(response))
 }
 
 pub async fn get_user(
@@ -134,7 +148,19 @@ pub async fn update_user(
         source: None,
     })?;
     let _ = user;
-    Ok(Json(to_user_response(&state, current).await?))
+    let response = to_user_response(&state, current).await?;
+    state.event_bus.publish(
+        Event::new(EventKind::UserUpdated)
+            .with_actor(&claims.sub)
+            .with_payload(json!({
+                "id": response.id.clone(),
+                "username": response.username.clone(),
+                "email": response.email.clone(),
+                "role_ids": response.role_ids.clone(),
+                "result": "success",
+            })),
+    );
+    Ok(Json(response))
 }
 
 pub async fn delete_user(
@@ -148,6 +174,19 @@ pub async fn delete_user(
             message: "cannot delete the current authenticated user".to_owned(),
         });
     }
+    let user = state.auth_engine.users().find_by_id(&id).await?.ok_or_else(|| Error::NotFound {
+        message: format!("user not found: {id}"),
+    })?;
     state.auth_engine.users().delete(&id).await?;
+    state.event_bus.publish(
+        Event::new(EventKind::UserDeleted)
+            .with_actor(&claims.sub)
+            .with_payload(json!({
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "result": "success",
+            })),
+    );
     Ok(StatusCode::NO_CONTENT.into_response())
 }
