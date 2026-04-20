@@ -35,6 +35,7 @@ pub fn build_router(state: Arc<ApiState>) -> Router {
     let mut api: Router<Arc<ApiState>> = Router::new()
         .route("/docs", get(openapi_docs))
         .nest("/v1/auth", auth_router)
+        .nest("/v1/public", handlers::public::routes())
         .nest("/v1", protected_v1);
 
     for (plugin_name, router) in state.native_runtime.all_routes() {

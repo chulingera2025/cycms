@@ -236,15 +236,31 @@ impl Kernel {
             ctx.config.server.rate_limit.requests_per_minute,
             ctx.config.server.rate_limit.sensitive_requests_per_minute,
         ));
-        let app = cycms_api::build_router(api_state).layer(
-            ServiceBuilder::new()
-                .layer(middleware::from_fn(request_span_middleware))
-                .layer(middleware::from_fn_with_state(
-                    rate_limit,
-                    rate_limit_middleware,
-                ))
-                .layer(build_cors_layer(&ctx.config.server.cors)?),
+
+        let api_router = cycms_api::build_router(api_state);
+
+        // 静态文件：上传目录
+        let uploads_dir = PathBuf::from(&ctx.config.media.upload_dir);
+        let uploads_service = tower_http::services::ServeDir::new(&uploads_dir);
+
+        // 前端 SPA：构建产物目录（apps/web/dist）
+        let web_dist = resolve_web_dist_dir(self.config_path.as_deref());
+        let spa_service = tower_http::services::ServeDir::new(&web_dist).fallback(
+            tower_http::services::ServeFile::new(web_dist.join("index.html")),
         );
+
+        let app = api_router
+            .nest_service("/uploads", uploads_service)
+            .fallback_service(spa_service)
+            .layer(
+                ServiceBuilder::new()
+                    .layer(middleware::from_fn(request_span_middleware))
+                    .layer(middleware::from_fn_with_state(
+                        rate_limit,
+                        rate_limit_middleware,
+                    ))
+                    .layer(build_cors_layer(&ctx.config.server.cors)?),
+            );
 
         let address = format!("{}:{}", ctx.config.server.host, ctx.config.server.port);
         let listener = TcpListener::bind(&address)
@@ -430,7 +446,12 @@ async fn rate_limit_middleware(
 fn is_sensitive_path(path: &str) -> bool {
     matches!(
         path,
-        "/api/v1/auth/login" | "/api/v1/auth/register" | "/api/v1/auth/refresh"
+        "/api/v1/auth/login"
+            | "/api/v1/auth/register"
+            | "/api/v1/auth/refresh"
+            | "/api/v1/public/auth/login"
+            | "/api/v1/public/auth/register"
+            | "/api/v1/public/auth/refresh"
     )
 }
 
@@ -500,4 +521,13 @@ fn resolve_plugins_root(config_path: Option<&Path>, directory: &str) -> PathBuf 
         .map(Path::to_path_buf)
         .unwrap_or_default();
     base.join(raw)
+}
+
+/// 解析前端构建产物目录：以配置文件所在目录或 cwd 为基准，拼接 `apps/web/dist`。
+fn resolve_web_dist_dir(config_path: Option<&Path>) -> PathBuf {
+    let base = config_path
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .unwrap_or_default();
+    base.join("apps/web/dist")
 }

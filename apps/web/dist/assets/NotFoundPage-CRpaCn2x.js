@@ -1,0 +1,1 @@
+import{j as n,L as s}from"./index-CEvm4pKU.js";function r(){return n.jsxs("div",{className:"not-found-page",children:[n.jsx("h1",{children:"404"}),n.jsx("p",{children:"抱歉，您访问的页面不存在"}),n.jsx(s,{to:"/",className:"btn btn-primary",children:"返回首页"})]})}export{r as default};

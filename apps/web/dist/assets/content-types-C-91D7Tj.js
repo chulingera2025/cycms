@@ -1,0 +1,1 @@
+import{e}from"./index-CEvm4pKU.js";const r="/api/v1/content-types",o={list(){return e.get(r)},get(t){return e.get(`${r}/${t}`)},create(t){return e.post(r,t)},update(t,n){return e.put(`${r}/${t}`,n)},delete(t){return e.delete(`${r}/${t}`)}};export{o as c};
