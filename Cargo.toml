@@ -28,7 +28,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.95"
 license = "Apache-2.0"
 repository = "https://github.com/chulingera2025/cycms"
 
@@ -38,9 +38,7 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
-# 允许在公共 API 中使用 must_use，但不强制
 must_use_candidate = "allow"
-# 模块名称重导出在 Rust 2024 下是惯用写法
 module_name_repetitions = "allow"
 
 [workspace.dependencies]
@@ -55,10 +53,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 toml = "0.8"
 sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "mysql", "sqlite", "uuid", "chrono", "json"] }
-axum = { version = "0.8", features = ["multipart"] }
+axum = "0.8"
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "cors", "fs"] }
-utoipa = { version = "5.4", features = ["chrono", "uuid", "preserve_order"] }
+tower-http = { version = "0.6", features = ["trace", "cors"] }
 argon2 = "0.5"
 password-hash = { version = "0.5", features = ["alloc"] }
 jsonwebtoken = "9"
@@ -66,7 +63,6 @@ rand = "0.8"
 async-trait = "0.1"
 infer = "0.19"
 tempfile = "3"
-clap = { version = "4.5", features = ["derive"] }
 
 cycms-core = { path = "crates/cycms-core" }
 cycms-kernel = { path = "crates/cycms-kernel" }

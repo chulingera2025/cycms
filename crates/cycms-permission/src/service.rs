@@ -241,12 +241,11 @@ fn evaluate_scopes(scopes: &[PermissionScope], user_id: &str, owner_id: Option<&
     if scopes.contains(&PermissionScope::All) {
         return true;
     }
-    if scopes.contains(&PermissionScope::Own) {
-        if let Some(owner) = owner_id {
-            if owner == user_id {
-                return true;
-            }
-        }
+    if scopes.contains(&PermissionScope::Own)
+        && let Some(owner) = owner_id
+        && owner == user_id
+    {
+        return true;
     }
     false
 }

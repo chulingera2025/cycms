@@ -90,10 +90,9 @@ async fn get_published_entry(
         .content_engine
         .get(&type_api_id, &id_or_slug, &populate)
         .await?
+        && entry.status == ContentStatus::Published
     {
-        if entry.status == ContentStatus::Published {
-            return Ok(Json(entry));
-        }
+        return Ok(Json(entry));
     }
 
     // 回退按 slug 查找

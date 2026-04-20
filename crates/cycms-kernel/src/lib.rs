@@ -354,7 +354,7 @@ impl RateLimitState {
         }
 
         let mut counter = state.lock().await;
-        if counter.window_started_at.elapsed() >= Duration::from_secs(60) {
+        if counter.window_started_at.elapsed() >= Duration::from_mins(1) {
             counter.window_started_at = Instant::now();
             counter.count = 0;
         }

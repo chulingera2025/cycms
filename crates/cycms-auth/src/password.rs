@@ -1,7 +1,8 @@
+use argon2::password_hash::{
+    PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng,
+};
 use argon2::{Algorithm, Argon2, Params, Version};
 use cycms_config::Argon2Config;
-use password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use rand::rngs::OsRng;
 
 use crate::error::AuthError;
 
@@ -32,7 +33,7 @@ pub fn verify_password(plain: &str, phc: &str) -> Result<bool, AuthError> {
         .map_err(|err| AuthError::PasswordHash(format!("invalid phc string: {err}")))?;
     match Argon2::default().verify_password(plain.as_bytes(), &parsed) {
         Ok(()) => Ok(true),
-        Err(password_hash::Error::Password) => Ok(false),
+        Err(argon2::password_hash::Error::Password) => Ok(false),
         Err(other) => Err(AuthError::PasswordHash(format!(
             "argon2 verify failed: {other}"
         ))),
