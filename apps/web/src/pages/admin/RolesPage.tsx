@@ -97,7 +97,8 @@ export default function RolesPage() {
                   <>
                     {role.permissions.slice(0, 10).map((p) => (
                       <Tag key={p.id} className="font-mono text-xs">
-                        {p.code}
+                        {p.domain}.{p.resource}.{p.action}
+                        {p.scope === 'own' ? ':own' : ''}
                       </Tag>
                     ))}
                     {role.permissions.length > 10 && (

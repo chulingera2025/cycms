@@ -12,7 +12,7 @@ interface Props {
 export function PermissionMatrix({ permissions, value, onChange, disabled }: Props) {
   const grouped = useMemo(() => {
     return permissions.reduce<Record<string, Permission[]>>((acc, p) => {
-      const domain = p.code.split('.')[0] ?? 'other';
+      const domain = p.domain || 'other';
       (acc[domain] ??= []).push(p);
       return acc;
     }, {});
@@ -69,10 +69,12 @@ export function PermissionMatrix({ permissions, value, onChange, disabled }: Pro
               {perms.map((p) => (
                 <Checkbox key={p.id} value={p.id}>
                   <span className="font-mono text-xs text-text">
-                    {p.code.split('.').slice(1).join('.') || p.code}
+                    {p.resource}.{p.action}
                   </span>
-                  {p.description && (
-                    <span className="ml-2 text-xs text-text-muted">{p.description}</span>
+                  {p.scope === 'own' && (
+                    <Tag className="ml-2" color="blue">
+                      own
+                    </Tag>
                   )}
                 </Checkbox>
               ))}

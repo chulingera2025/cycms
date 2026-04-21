@@ -9,6 +9,19 @@
   box-sizing: border-box;
 }
 
+:where(button, [type='button'], [type='reset'], [type='submit']) {
+  appearance: button;
+  background-color: transparent;
+  background-image: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
 html {
   line-height: 1.5;
 }

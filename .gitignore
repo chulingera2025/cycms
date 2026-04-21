@@ -9,4 +9,5 @@ target
 *.log
 *.tmp
 *.bak
-*.db
+data/cycms.db-shm
+data/cycms.db-wal

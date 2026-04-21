@@ -170,9 +170,11 @@ export interface Plugin {
 
 export interface Permission {
   id: string;
-  code: string;
-  description?: string;
-  plugin_name?: string;
+  domain: string;
+  resource: string;
+  action: string;
+  scope: 'all' | 'own';
+  source: string;
 }
 
 export interface Role {
