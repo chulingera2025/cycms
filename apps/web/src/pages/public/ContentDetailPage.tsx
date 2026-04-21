@@ -1,50 +1,87 @@
-import { useParams, Link } from 'react-router-dom';
-import { useAsync } from '@/hooks/useAsync';
-import { publicApi } from '@/lib/api';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { Breadcrumb, Collapse, Empty, Tag, Typography } from 'antd';
+import { Link, useParams } from 'react-router-dom';
+import { usePublicContentDetail } from '@/features/public/hooks';
+import { PageSkeleton } from '@/components/shared/PageSkeleton';
+import { formatDateTime } from '@/utils/format';
+
+// TODO!!! richtext 字段当前作为纯文本展示；后续引入 markdown 渲染（react-markdown 或内联 MDEditor.Markdown）
+function FieldValue({ value }: { value: unknown }) {
+  if (value == null || value === '') {
+    return <Typography.Text type="secondary">—</Typography.Text>;
+  }
+  if (typeof value === 'string') {
+    return (
+      <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>
+        {value}
+      </Typography.Paragraph>
+    );
+  }
+  if (typeof value === 'boolean') return <Tag>{value ? 'true' : 'false'}</Tag>;
+  if (typeof value === 'number') return <span>{value}</span>;
+  return (
+    <pre className="m-0 overflow-auto rounded bg-surface-alt p-3 font-mono text-xs text-text">
+      {JSON.stringify(value, null, 2)}
+    </pre>
+  );
+}
 
 export default function ContentDetailPage() {
   const { typeApiId, idOrSlug } = useParams<{ typeApiId: string; idOrSlug: string }>();
+  const { data: entry, isLoading, error } = usePublicContentDetail(typeApiId, idOrSlug);
 
-  const { data: entry, loading, error } = useAsync(
-    () =>
-      typeApiId && idOrSlug
-        ? publicApi.getContent(typeApiId, idOrSlug)
-        : Promise.resolve(null),
-    [typeApiId, idOrSlug],
-  );
-
-  if (loading) return <LoadingSpinner />;
-  if (error) return <div className="page-error">内容未找到</div>;
-  if (!entry) return null;
+  if (isLoading) return <PageSkeleton variant="detail" />;
+  if (error || !entry) return <Empty description="内容未找到" />;
 
   return (
-    <article className="content-detail-page">
-      <nav className="breadcrumb">
-        <Link to="/">首页</Link> /{' '}
-        <Link to={`/content/${typeApiId}`}>{typeApiId}</Link> /{' '}
-        <span>{entry.slug ?? entry.id.slice(0, 8)}</span>
-      </nav>
+    <article>
+      <Breadcrumb
+        items={[
+          { title: <Link to="/">首页</Link> },
+          { title: <Link to={`/content/${typeApiId}`}>{typeApiId}</Link> },
+          { title: entry.slug ?? entry.id.slice(0, 8) },
+        ]}
+      />
+      <Typography.Title level={1} style={{ marginTop: 16 }}>
+        {entry.slug ?? entry.id.slice(0, 8)}
+      </Typography.Title>
+      <Typography.Text type="secondary">
+        发布于 {formatDateTime(entry.published_at ?? entry.created_at)}
+      </Typography.Text>
 
-      <header>
-        <h1>{entry.slug ?? entry.id}</h1>
-        <time>{new Date(entry.published_at ?? entry.created_at).toLocaleDateString()}</time>
-      </header>
-
-      <div className="entry-fields">
+      <div className="mt-8 flex flex-col gap-6">
         {Object.entries(entry.fields as Record<string, unknown>).map(([key, value]) => (
-          <div key={key} className="field-block">
-            <h3>{key}</h3>
-            <div className="field-value">
-              {typeof value === 'string' ? (
-                <div dangerouslySetInnerHTML={{ __html: value }} />
-              ) : (
-                <pre>{JSON.stringify(value, null, 2)}</pre>
-              )}
-            </div>
-          </div>
+          <section
+            key={key}
+            className="rounded-lg border border-border bg-surface p-5"
+          >
+            <Typography.Title level={4} style={{ marginTop: 0 }}>
+              {key}
+            </Typography.Title>
+            <FieldValue value={value} />
+          </section>
         ))}
       </div>
+
+      {entry.populated && Object.keys(entry.populated).length > 0 && (
+        <Collapse
+          className="mt-6"
+          items={Object.entries(entry.populated).map(([key, arr]) => ({
+            key,
+            label: `${key} (${arr.length})`,
+            children: (
+              <ul className="m-0 pl-4">
+                {arr.map((e) => (
+                  <li key={e.id}>
+                    <Link to={`/content/${e.content_type_api_id}/${e.slug ?? e.id}`}>
+                      {e.slug ?? e.id}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ),
+          }))}
+        />
+      )}
     </article>
   );
 }
