@@ -1,15 +1,39 @@
-import { Breadcrumb, Collapse, Empty, Tag, Typography } from 'antd';
+import { Suspense, lazy } from 'react';
+import { Breadcrumb, Collapse, Empty, Skeleton, Tag, Typography } from 'antd';
 import { Link, useParams } from 'react-router-dom';
 import { usePublicContentDetail } from '@/features/public/hooks';
 import { PageSkeleton } from '@/components/shared/PageSkeleton';
 import { formatDateTime } from '@/utils/format';
 
-// TODO!!! richtext 字段当前作为纯文本展示；后续引入 markdown 渲染（react-markdown 或内联 MDEditor.Markdown）
+const MarkdownPreview = lazy(async () => {
+  const mod = await import('@uiw/react-md-editor');
+  return { default: mod.default.Markdown };
+});
+
+const MARKDOWN_HINT = /(^|\n)\s{0,3}(#{1,6}\s|>\s|[-*+]\s|\d+\.\s|```)|\*\*|__|~~|\[[^\]]+\]\([^)]+\)|`[^`]+`/;
+
+function looksLikeMarkdown(source: string): boolean {
+  if (source.includes('\n\n')) return true;
+  return MARKDOWN_HINT.test(source);
+}
+
 function FieldValue({ value }: { value: unknown }) {
   if (value == null || value === '') {
     return <Typography.Text type="secondary">—</Typography.Text>;
   }
   if (typeof value === 'string') {
+    if (looksLikeMarkdown(value)) {
+      return (
+        <div data-color-mode="inherit" className="prose prose-slate max-w-none dark:prose-invert">
+          <Suspense fallback={<Skeleton active paragraph={{ rows: 3 }} />}>
+            <MarkdownPreview
+              source={value}
+              style={{ background: 'transparent', color: 'inherit' }}
+            />
+          </Suspense>
+        </div>
+      );
+    }
     return (
       <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>
         {value}
