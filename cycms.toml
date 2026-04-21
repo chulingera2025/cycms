@@ -1,4 +1,4 @@
-# cycms 默认系统配置模板
+# cycms 配置模板
 # 所有字段均可通过环境变量覆盖，格式：CYCMS__<SECTION>__<KEY>
 # 示例：CYCMS__SERVER__PORT=9000
 
