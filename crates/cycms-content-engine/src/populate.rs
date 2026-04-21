@@ -1,4 +1,4 @@
-//! 单层关联加载（任务 11 Step 5）。
+//! 单层关联加载。
 //!
 //! v0.1 仅支持深度 1，深度 > 1 触发 [`ContentEngineError::PopulateDepthExceeded`]。
 //! 服务层调用 [`populate_entries`] 把 `content_relations` 中的目标 entries 按

@@ -1,4 +1,4 @@
-//! 发布状态机错误类型（任务 13）。
+//! 发布状态机错误类型。
 
 use cycms_content_engine::ContentStatus;
 

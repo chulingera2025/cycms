@@ -12,7 +12,7 @@ use crate::service::AuthEngine;
 
 /// axum 认证中间件：从 `Authorization: Bearer <token>` 头中解析 access token，
 /// 校验通过后把 [`AuthClaims`] 注入到 `Request::extensions`，供下游
-/// [`Authenticated`] 提取器和任务 6 的权限中间件取用。
+/// [`Authenticated`] 提取器和权限中间件取用。
 ///
 /// 任何失败路径都返回 401 并携带 `{code, message}` JSON，**不泄露具体原因**。
 pub async fn auth_middleware(

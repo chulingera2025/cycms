@@ -1,4 +1,4 @@
-//! cycms-content-engine —— 内容实例 CRUD / 查询引擎 / 事件集成（任务 11）。
+//! cycms-content-engine —— 内容实例 CRUD / 查询引擎 / 事件集成。
 //!
 //! 覆盖 Requirements 4.1 – 4.7：
 //! - [`ContentEntry`] 持久化到 `content_entries` 表；
@@ -8,13 +8,13 @@
 //! - 删除路径检查 `content_relations` 反向引用并按 `ContentConfig.default_delete_mode`
 //!   切换软/硬删除。
 //!
-//! 模块结构（按 Step 分批落地）：
+//! 模块结构：
 //! - [`error`]：`ContentEngineError` + 跨 crate 映射；
 //! - [`model`]：`ContentEntry` / `ContentStatus` / 分页响应等数据结构；
 //! - [`repository`]：`content_entries` 表的三方言 CRUD；
 //! - [`query`]：`ContentQuery` + 13 种 filter operator 的 SQL 编译；
 //! - [`populate`]：`content_relations` 单层关联加载；
-//! - [`service`]：`ContentEngine` 门面（Step 6 完成 `delete`，Step 7 补齐 CRUD）。
+//! - [`service`]：`ContentEngine` 门面。
 
 mod error;
 mod model;

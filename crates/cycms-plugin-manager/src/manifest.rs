@@ -34,7 +34,7 @@ pub struct PluginMeta {
     pub license: Option<String>,
 }
 
-/// 插件实现类型，决定 `PluginManager` 调用哪种 runtime 加载（任务 16 / 17）。
+/// 插件实现类型，决定 `PluginManager` 调用哪种 runtime 加载。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PluginKind {
@@ -104,7 +104,7 @@ const fn default_scope() -> PermissionScope {
     PermissionScope::All
 }
 
-/// 前端入口信息（Req 20.5）。v0.1 仅存储路径字面量，AdminWeb 动态加载逻辑在任务 21。
+/// 前端入口信息（Req 20.5）。v0.1 仅存储路径字面量，AdminWeb 负责动态加载。
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FrontendSpec {
     pub entry: String,

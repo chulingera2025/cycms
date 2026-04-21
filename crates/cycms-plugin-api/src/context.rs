@@ -34,13 +34,13 @@ pub struct PluginContext {
     pub settings_manager: Arc<SettingsManager>,
     /// 内容类型注册表：插件可读取现有类型、注册自定义字段类型（Req 3.6）。
     pub content_model: Arc<ContentModelRegistry>,
-    /// 内容实例引擎：插件可执行 CRUD / 查询 / 删除（任务 11）。
+    /// 内容实例引擎：插件可执行 CRUD / 查询 / 删除。
     pub content_engine: Arc<ContentEngine>,
-    /// 内容版本快照与回滚门面（任务 12）。
+    /// 内容版本快照与回滚门面。
     pub revision_manager: Arc<RevisionManager>,
-    /// 发布状态机门面（任务 13）。
+    /// 发布状态机门面。
     pub publish_manager: Arc<PublishManager>,
-    /// 媒体资产管理门面（任务 14）。
+    /// 媒体资产管理门面。
     pub media_manager: Arc<MediaManager>,
     /// 插件间服务发现与调用。
     pub service_registry: Arc<ServiceRegistry>,

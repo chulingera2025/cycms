@@ -1,4 +1,4 @@
-//! `content_entries` 发布状态列操作（任务 13）。
+//! `content_entries` 发布状态列操作。
 //!
 //! 只负责 `publish` / `unpublish` 两条 UPDATE，其余读取通过
 //! `ContentEntryRepository::find_by_id` 完成，避免重复行映射代码。

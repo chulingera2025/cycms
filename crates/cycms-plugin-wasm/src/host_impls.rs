@@ -6,11 +6,9 @@
 //! - `permission` / `auth` 代理到对应 engine
 //! - `content` 代理到 `ContentEngine`
 //! - `event` 发布到 `EventBus`
-//! - `route` 记录到 `HostState`（具体合成 Router 在 17.4）
+//! - `route` 记录到 `HostState`，由运行时合成 Router
 //! - `http` 直出 reqwest，无白名单
 //! - `db` 直接访问 `DatabasePool`，无只读约束
-//!
-//! 本步（17.2）仅实现 `log`；其余 9 组留为「返回 WIT inner-Err」的 stub，17.3 依次补全。
 
 mod auth;
 mod content;

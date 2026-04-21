@@ -1,4 +1,4 @@
-//! `PublishManager` 服务门面（任务 13）。
+//! `PublishManager` 服务门面。
 //!
 //! 实现内容发布状态机：
 //! - [`PublishManager::publish`]：Draft → Published，绑定 `published_version_id`，

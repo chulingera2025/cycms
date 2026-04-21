@@ -1,10 +1,10 @@
-//! `content_entries` 表三方言 CRUD（任务 11 Step 3）。
+//! `content_entries` 表三方言 CRUD。
 //!
 //! 持久化层只关注 DB I/O，不做字段级校验 / 事件发布 / 发布状态机，这些职责由
-//! service 层串联（Step 6/7）。
+//! service 层串联。
 //!
-//! `current_version_id` / `published_version_id` 任务 11 暂不维护，任务 12
-//! (Revision) / 13 (Publish) 接入后由对应子系统更新。
+//! `current_version_id` / `published_version_id` 本层不维护，
+//! 由 Revision / Publish 子系统接入后更新。
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -37,7 +37,7 @@ pub struct NewContentEntryRow {
 
 /// 全量更新 `content_entries` 所需的行参数。
 ///
-/// 不涉及 `current_version_id` / `published_version_id`；它们由任务 12/13 独立维护。
+/// 不涉及 `current_version_id` / `published_version_id`；它们由 Revision / Publish 子系统独立维护。
 #[derive(Debug, Clone)]
 pub struct UpdateContentEntryRow {
     pub slug: Option<String>,

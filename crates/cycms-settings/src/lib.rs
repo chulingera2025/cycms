@@ -1,4 +1,4 @@
-//! cycms-settings —— 系统与插件设置持久化层（任务 8）。
+//! cycms-settings —— 系统与插件设置持久化层。
 //!
 //! 覆盖 Requirements 15.2 / 15.3：
 //! - 键值以 `(namespace, key) -> JSON value` 形态存入 `settings` 表；

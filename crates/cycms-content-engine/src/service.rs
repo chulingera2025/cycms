@@ -1,4 +1,4 @@
-//! `ContentEngine` 服务门面（任务 11 Step 6/7）。
+//! `ContentEngine` 服务门面。
 //!
 //! v0.1 关注点：
 //! - [`ContentEngine::create`]：校验 `Single` 唯一性 → 校验 fields → 持久化 →
@@ -8,8 +8,8 @@
 //! - [`ContentEngine::get`] / [`ContentEngine::list`]：按 type 过滤 + 单层 populate。
 //! - [`ContentEngine::delete`]：软/硬删除切换 + 引用完整性检查 + `content.deleted`。
 //!
-//! `current_version_id` / `published_version_id` 留给任务 12 (Revision) /
-//! 13 (Publish) 通过订阅 `content.*` 事件或独立服务接管，service 不直接维护。
+//! `current_version_id` / `published_version_id` 留给 Revision / Publish 子系统
+//! 通过订阅 `content.*` 事件或独立服务接管，service 不直接维护。
 //!
 //! `populated` 中嵌套 entries 的 `content_type_api_id` 字段 v0.1 不会被回填
 //! （需要按 `content_type_id` 反查 `content_types`），调用方如需该字段可单独

@@ -1,6 +1,6 @@
 //! `PluginManager` 生命周期集成测试。
 //!
-//! 使用 [`MockRuntime`] 替代 Native / Wasm 运行时（任务 16 / 17），
+//! 使用 [`MockRuntime`] 替代 Native / Wasm 运行时，
 //! 覆盖：
 //! - install → enable → disable → uninstall 的完整状态机
 //! - 权限点随 install 落库、随 uninstall 清理

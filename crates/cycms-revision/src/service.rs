@@ -1,4 +1,4 @@
-//! `RevisionManager` 服务门面（任务 12）。
+//! `RevisionManager` 服务门面。
 //!
 //! 职责：
 //! - [`RevisionManager::create_revision`]：为 content entry 创建不可变快照，

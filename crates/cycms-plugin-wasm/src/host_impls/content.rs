@@ -7,7 +7,7 @@
 //!   采用三态：缺省字段保留原值，`null` 清空，字符串替换。
 //! - delete: v0.1 始终走 `actor_id = plugin:<name>`，`mode` 使用 `ContentConfig` 默认。
 //! - find: 简化版 [`ContentQuery`]（`page / page_size / status / populate`），filters
-//!   与 sort 由后续任务扩展。
+//!   与 sort 后续扩展。
 
 #![allow(clippy::option_option)]
 

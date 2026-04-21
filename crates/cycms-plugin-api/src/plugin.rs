@@ -8,7 +8,7 @@ use cycms_events::{EventHandler, EventKind};
 
 use crate::context::PluginContext;
 
-/// 插件路由文档元数据，供任务 18 聚合进 `/api/docs`。
+/// 插件路由文档元数据，供 `ApiGateway` 聚合进 `/api/docs`。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PluginRouteDoc {
     pub path: String,
@@ -18,7 +18,7 @@ pub struct PluginRouteDoc {
 /// Native 插件必须实现的 trait（Req 11.1 / 11.2 / 11.3 / 11.4）。
 ///
 /// 只在 `cycms-plugin-api` 定义 trait 本身与宿主可感知的返回值形状；具体加载、调度、
-/// Router 合并、服务批量注册由任务 16 的 `NativePluginRuntime` 完成。
+/// Router 合并、服务批量注册由 `NativePluginRuntime` 完成。
 ///
 /// 所有 handler 都以 `&self` 接收，要求实现方是内部可变/共享状态安全的。
 #[async_trait]
@@ -26,7 +26,7 @@ pub trait Plugin: Send + Sync {
     /// 插件唯一标识（同时作为 `ServiceRegistry` 键的 plugin 段）。
     fn name(&self) -> &str;
 
-    /// 插件版本，遵循 SemVer（任务 15 的依赖解析以此为输入）。
+    /// 插件版本，遵循 SemVer（`PluginManager` 的依赖解析以此为输入）。
     fn version(&self) -> &str;
 
     /// 插件启用时的一次性初始化入口。
@@ -41,7 +41,7 @@ pub trait Plugin: Send + Sync {
     /// 清理失败时返回错误，`PluginManager` 记录但继续卸载流程。
     async fn on_disable(&self, ctx: &PluginContext) -> Result<()>;
 
-    /// 插件贡献的 axum 路由（挂载到 `/api/v1/x/{plugin_name}/*`，任务 16.3 实现合并）。
+    /// 插件贡献的 axum 路由（挂载到 `/api/v1/x/{plugin_name}/*`，由 Native 运行时负责合并）。
     fn routes(&self) -> Option<Router> {
         None
     }

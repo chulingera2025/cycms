@@ -1,19 +1,19 @@
-//! [`WasmPluginRuntime`] 主体：engine / linker 装配 + 生命周期管理（17.4）。
+//! [`WasmPluginRuntime`] 主体：engine / linker 装配 + 生命周期管理。
 //!
-//! # 装配（17.2）
+//! # 装配
 //!
 //! - `Engine`：wasmtime 43 在 `component-model` + `async` feature 下默认打开 Component
 //!   Model 与 async support，`Config::default()` 即可
 //! - `Linker<HostState>`：`wasmtime_wasi::p2::add_to_linker_async` 透传 WASI preview 2；
 //!   `Plugin::add_to_linker::<_, HostStateData>` 绑定 10 组 cycms host function
 //!
-//! # 生命周期（17.4）
+//! # 生命周期
 //!
 //! - `load`：读取 `.wasm` 字节 → `Component::from_binary` → 构造 `HostState`（聚合
 //!   [`PluginContext`] 中的全部核心服务引用 + `WasiCtxBuilder` 继承 stdio/env/network
 //!   并 preopen 当前工作目录）→ `Plugin::instantiate_async` → `call_on_enable`。
 //!   成功后读取 `HostState.subscribed_event_kinds` 把 `on-event` 代理 handler 订阅到
-//!   `EventBus`；`pending_routes` 在 17.4b 由 `compose_router` 合成 axum Router。
+//!   `EventBus`；`pending_routes` 由 `compose_router` 合成 axum Router。
 //! - `unload`：从表中移除 → abort 事件订阅 → 加锁 Store 调 `call_on_disable`（错误仅
 //!   记录，不阻断卸载）→ drop Store 释放内存。
 //!
@@ -60,7 +60,7 @@ struct LoadedWasmPlugin {
     bindings: Arc<Plugin>,
     subscriptions: Vec<SubscriptionHandle>,
     /// 由 [`compose_router`] 根据 guest 的 `route.register` 合成的 axum `Router`；没有
-    /// 路由登记时为 `None`。由 `ApiGateway`（任务 18）合并到主路由表。
+    /// 路由登记时为 `None`。由 `ApiGateway` 合并到主路由表。
     routes: Option<Router>,
     route_docs: Vec<PluginRouteDoc>,
 }
@@ -96,8 +96,8 @@ impl WasmPluginRuntime {
         })
     }
 
-    /// 列出当前已加载的 wasm 插件 `(name, Router)`，供 17.4b `compose_router` 落地后由
-    /// `ApiGateway`（任务 18）合并到主路由表。
+    /// 列出当前已加载的 wasm 插件 `(name, Router)`，供 `compose_router` 合成后由
+    /// `ApiGateway` 合并到主路由表。
     #[must_use]
     pub fn all_routes(&self) -> Vec<(String, Router)> {
         let loaded = self.loaded.read().unwrap_or_else(PoisonError::into_inner);

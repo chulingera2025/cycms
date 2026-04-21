@@ -99,7 +99,7 @@ impl FieldTypeRegistry {
 
     /// 按插件名前缀批量卸载（匹配 `"{prefix}."` 起始的所有 key），返回被移除的数量。
     ///
-    /// 供任务 15 的 `PluginManager` 在插件卸载 / 禁用时调用。
+    /// 供 `PluginManager` 在插件卸载 / 禁用时调用。
     pub fn unregister_by_prefix(&self, prefix: &str) -> usize {
         let needle = format!("{prefix}.");
         let mut map = self

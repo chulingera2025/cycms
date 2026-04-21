@@ -1,4 +1,4 @@
-//! cycms-content-model —— 内容类型定义、字段校验与 Schema 输出（任务 10）。
+//! cycms-content-model —— 内容类型定义、字段校验与 Schema 输出。
 //!
 //! 覆盖 Requirements 3.1 / 3.2 / 3.3 / 3.4 / 3.5 / 3.6：
 //! - [`ContentTypeDefinition`] 持久化到 `content_types` 表，`fields` JSON 列；

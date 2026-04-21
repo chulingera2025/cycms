@@ -1,4 +1,4 @@
-//! `cycms-plugin-wasm` —— Wasm Component Model 插件运行时（任务 17）。
+//! `cycms-plugin-wasm` —— Wasm Component Model 插件运行时。
 //!
 //! 覆盖 Requirements：
 //! - R12.1 使用 wasmtime 编译并实例化 `.wasm` 组件，绑定 Host Functions

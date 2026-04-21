@@ -6,7 +6,7 @@
 //! 并负责：
 //! - 将 [`cycms_plugin_api::Plugin::event_handlers`] 订阅到 [`cycms_events::EventBus`]
 //! - 将 [`cycms_plugin_api::Plugin::services`] 注册到 [`cycms_plugin_api::ServiceRegistry`]
-//! - 收集 [`cycms_plugin_api::Plugin::routes`] 供 `ApiGateway`（任务 18）合并到主路由表
+//! - 收集 [`cycms_plugin_api::Plugin::routes`] 供 `ApiGateway` 合并到主路由表
 //!
 //! 运行时优先使用宿主预注册的静态插件实例；若未命中，则回退到按 manifest `entry`
 //! 指向的 `.so` 文件进行动态加载。

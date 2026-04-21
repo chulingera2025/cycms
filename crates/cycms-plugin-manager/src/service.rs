@@ -131,7 +131,7 @@ impl PluginManager {
         }
     }
 
-    /// 注册或替换一个运行时（按 `kind` 去重）。Kernel 在任务 16 / 17 完成后调用此方法
+    /// 注册或替换一个运行时（按 `kind` 去重）。Kernel 调用此方法
     /// 注入 Native / Wasm runtime；测试场景亦可用于挂载 mock 实现。
     pub fn install_runtime(&self, runtime: Arc<dyn PluginRuntime>) {
         let mut guard = self

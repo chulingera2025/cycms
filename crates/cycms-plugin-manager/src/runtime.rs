@@ -1,7 +1,7 @@
 //! 插件运行时抽象。
 //!
-//! 本 trait 由 `cycms-plugin-manager` 自己持有，`cycms-plugin-native`（任务 16）
-//! 与 `cycms-plugin-wasm`（任务 17）反向依赖本 crate 实现该 trait，使 Manager 得以
+//! 本 trait 由 `cycms-plugin-manager` 自己持有，`cycms-plugin-native`
+//! 与 `cycms-plugin-wasm` 反向依赖本 crate 实现该 trait，使 Manager 得以
 //! 在不引入具体运行时类型的前提下完成生命周期编排。
 
 use std::path::Path;

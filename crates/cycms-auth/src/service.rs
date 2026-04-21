@@ -25,7 +25,7 @@ pub struct AuthEngine {
     users: UserRepository,
     revoked: RevokedTokenRepository,
     jwt: JwtCodec,
-    #[allow(dead_code)] // 任务 5.6 create_user 将使用
+    #[allow(dead_code)] // create_user 将使用
     argon2_cfg: cycms_config::Argon2Config,
     dummy_phc: String,
     db: Arc<DatabasePool>,
@@ -55,7 +55,7 @@ impl AuthEngine {
         })
     }
 
-    /// 返回内部 [`UserRepository`]（供任务 6 权限引擎与 CLI 使用）。
+    /// 返回内部 [`UserRepository`]（供权限引擎与 CLI 使用）。
     #[must_use]
     pub fn users(&self) -> &UserRepository {
         &self.users
@@ -67,7 +67,7 @@ impl AuthEngine {
         &self.revoked
     }
 
-    /// 返回底层 [`DatabasePool`] 引用，后续任务若需共享同一池可从这里取。
+    /// 返回底层 [`DatabasePool`] 引用，供共享同一池的调用方复用。
     #[must_use]
     pub fn db(&self) -> &Arc<DatabasePool> {
         &self.db
@@ -171,7 +171,7 @@ impl AuthEngine {
     }
 
     /// 当且仅当系统尚无任何用户时创建初始管理员。此方法**不**绑定角色，角色绑定
-    /// 由调用方（任务 17 CLI `cycms seed admin`）在 `super_admin` 种子数据就绪后执行。
+    /// 由调用方（CLI `cycms seed admin`）在 `super_admin` 种子数据就绪后执行。
     ///
     /// # Errors
     /// - 已存在任意用户 → [`cycms_core::Error::Conflict`]

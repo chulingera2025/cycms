@@ -8,7 +8,7 @@
 //!   订阅句柄与插件绑定；`unload` 统一 abort。
 //! - 服务：`Plugin::services()` 以 `{plugin}.{svc}` 为 key 注册到 `ServiceRegistry`，
 //!   `unload` 时成对注销。
-//! - 路由：`Plugin::routes()` 收集后缓存，`routes_of` / `all_routes` 暴露给任务 18 的
+//! - 路由：`Plugin::routes()` 收集后缓存，`routes_of` / `all_routes` 暴露给
 //!   `ApiGateway` 合并到主路由表。
 //! - 动态库模式目前只保证生命周期钩子跨 dylib 可用；若插件需要 routes / services /
 //!   event handlers，仍应使用宿主静态注册路径。
