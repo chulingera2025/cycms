@@ -22,6 +22,8 @@ function resolve(mode: ThemeMode): ResolvedTheme {
 
 function applyToDom(resolved: ResolvedTheme) {
   document.documentElement.dataset.theme = resolved;
+  // MDEditor / 其他第三方库读取 data-color-mode，同步保证暗色生效
+  document.documentElement.dataset.colorMode = resolved;
 }
 
 function readStored(): ThemeMode {
