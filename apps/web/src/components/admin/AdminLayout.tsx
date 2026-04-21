@@ -75,7 +75,15 @@ function resolvePluginIcon(icon?: string) {
 
 function AdminLayoutContent() {
   const { user, logout } = useAuth();
-  const { degraded, error, findRoute, findSettingsPage, menuItems: pluginMenus } = useAdminExtensions();
+  const {
+    degraded,
+    error,
+    dismissRevisionChange,
+    findRoute,
+    findSettingsPage,
+    menuItems: pluginMenus,
+    revisionChange,
+  } = useAdminExtensions();
   const location = useLocation();
   const navigate = useNavigate();
   const { t } = useTranslation(['admin', 'common']);
@@ -271,6 +279,18 @@ function AdminLayoutContent() {
                 showIcon
                 message="插件扩展注册表加载失败，后台已切换到降级模式"
                 description={error?.message ?? '核心后台页面仍可继续使用，插件菜单和命名空间路由将回退到最近一次成功加载的注册表。'}
+              />
+            </div>
+          )}
+          {revisionChange && (
+            <div className="p-4 pb-0">
+              <Alert
+                type="info"
+                showIcon
+                closable
+                onClose={dismissRevisionChange}
+                message="插件扩展注册表已更新"
+                description={`检测到插件扩展注册表已从 ${revisionChange.previousRevision} 更新为 ${revisionChange.currentRevision}。当前后台菜单、命名空间路由和设置入口已经按最新状态重算。`}
               />
             </div>
           )}

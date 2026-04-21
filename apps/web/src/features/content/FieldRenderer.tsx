@@ -1,7 +1,9 @@
-import { lazy, Suspense, useState } from 'react';
-import { Button, DatePicker, Input, InputNumber, Skeleton, Space, Switch } from 'antd';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { Alert, Button, DatePicker, Input, InputNumber, Skeleton, Space, Switch } from 'antd';
 import dayjs from 'dayjs';
 import { Image as ImageIcon, Link2, X } from 'lucide-react';
+import { useAdminExtensions } from '@/features/admin-extensions';
+import { PluginFieldRendererHost } from '@/features/admin-extensions/module-host';
 import { MediaPicker } from '@/features/media/MediaPicker';
 import {
   getFieldTypeKind,
@@ -19,6 +21,109 @@ interface Props {
   field: FieldDefinition;
   value: unknown;
   onChange: (v: unknown) => void;
+  contentTypeApiId: string;
+  entryId?: string;
+  mode: 'create' | 'edit';
+}
+
+function formatCustomFallbackValue(value: unknown) {
+  return typeof value === 'string' ? value : JSON.stringify(value ?? '', null, 2);
+}
+
+function CustomFieldFallback({
+  typeName,
+  value,
+  onChange,
+  reason,
+}: {
+  typeName: string;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  reason: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Alert type="warning" showIcon message="自定义字段已回退到宿主原生编辑器" description={reason} />
+      <Input.TextArea
+        style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}
+        value={formatCustomFallbackValue(value)}
+        onChange={(event) => onChange(event.target.value)}
+        autoSize={{ minRows: 4, maxRows: 16 }}
+        placeholder={`请输入 ${typeName} 的原始值；若为对象或数组，请直接输入 JSON。`}
+      />
+    </div>
+  );
+}
+
+function CustomFieldRenderer({
+  field,
+  value,
+  onChange,
+  contentTypeApiId,
+  entryId,
+  mode,
+}: Props) {
+  const { bootstrap, getFieldRenderer } = useAdminExtensions();
+  const [fallbackReason, setFallbackReason] = useState<string | null>(null);
+
+  const typeName = field.field_type.kind === 'custom' ? field.field_type.type_name : '';
+  const renderer = typeName ? getFieldRenderer(typeName) : null;
+
+  useEffect(() => {
+    setFallbackReason(null);
+  }, [typeName, renderer?.contribution.id]);
+
+  if (!typeName) {
+    return (
+      <CustomFieldFallback
+        typeName="unknown"
+        value={value}
+        onChange={onChange}
+        reason="字段协议缺少 custom.type_name，宿主无法定位对应的插件字段渲染器。"
+      />
+    );
+  }
+
+  if (!renderer) {
+    return (
+      <CustomFieldFallback
+        typeName={typeName}
+        value={value}
+        onChange={onChange}
+        reason={`未在当前 bootstrap registry 中找到 ${typeName} 对应的插件字段渲染器。`}
+      />
+    );
+  }
+
+  if (fallbackReason) {
+    return (
+      <CustomFieldFallback
+        typeName={typeName}
+        value={value}
+        onChange={onChange}
+        reason={fallbackReason}
+      />
+    );
+  }
+
+  return (
+    <PluginFieldRendererHost
+      pluginName={renderer.pluginName}
+      contributionId={renderer.contribution.id}
+      sdkVersion={bootstrap?.shellSdkVersion ?? '1.0.0'}
+      moduleUrl={renderer.contribution.moduleUrl}
+      styles={renderer.contribution.styles}
+      field={field}
+      value={value}
+      onChange={onChange}
+      contentTypeApiId={contentTypeApiId}
+      entryId={entryId}
+      mode={mode}
+      onFatalError={(error) => {
+        setFallbackReason(`插件字段渲染器挂载失败：${error.message}`);
+      }}
+    />
+  );
 }
 
 function MediaField({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
@@ -79,7 +184,7 @@ function MediaField({ value, onChange }: { value: unknown; onChange: (v: unknown
   );
 }
 
-export function FieldRenderer({ field, value, onChange }: Props) {
+export function FieldRenderer({ field, value, onChange, contentTypeApiId, entryId, mode }: Props) {
   const fieldTypeKind = getFieldTypeKind(field.field_type);
 
   switch (fieldTypeKind) {
@@ -172,6 +277,18 @@ export function FieldRenderer({ field, value, onChange }: Props) {
         />
       );
     }
+
+    case 'custom':
+      return (
+        <CustomFieldRenderer
+          field={field}
+          value={value}
+          onChange={onChange}
+          contentTypeApiId={contentTypeApiId}
+          entryId={entryId}
+          mode={mode}
+        />
+      );
 
     default:
       return (

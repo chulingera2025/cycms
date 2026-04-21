@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { invalidateAdminExtensionQueries } from '@/features/admin-extensions/invalidation';
 import { pluginsApi } from '@/lib/api';
 import { qk } from '@/lib/query-keys';
 
@@ -27,6 +28,8 @@ export function usePluginAction(action: PluginAction) {
           return;
       }
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.plugins.list }),
+    onSuccess: async () => {
+      await invalidateAdminExtensionQueries(queryClient);
+    },
   });
 }

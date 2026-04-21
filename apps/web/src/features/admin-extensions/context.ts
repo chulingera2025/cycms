@@ -1,8 +1,10 @@
 import { createContext, useContext } from 'react';
 import type {
   AdminExtensionBootstrap,
+  BootstrapFieldRendererContribution,
   BootstrapPlugin,
   BootstrapRouteContribution,
+  BootstrapSlotContribution,
   BootstrapSettingsContribution,
   BootstrapSettingsPage,
   ExtensionDiagnostic,
@@ -27,6 +29,24 @@ export interface AdminExtensionSettingsNamespace {
   contribution: BootstrapSettingsContribution;
 }
 
+export interface AdminExtensionFieldRendererEntry {
+  pluginName: string;
+  pluginVersion: string;
+  contribution: BootstrapFieldRendererContribution;
+}
+
+export interface AdminExtensionSlotEntry {
+  pluginName: string;
+  pluginVersion: string;
+  contribution: BootstrapSlotContribution;
+}
+
+export interface AdminExtensionRevisionChange {
+  previousRevision: string;
+  currentRevision: string;
+  changedAt: string;
+}
+
 interface MatchedSettingsPage {
   plugin: BootstrapPlugin;
   settings: BootstrapSettingsContribution;
@@ -36,14 +56,20 @@ interface MatchedSettingsPage {
 export interface AdminExtensionRegistryValue {
   bootstrap: AdminExtensionBootstrap | null;
   revision: string | null;
+  revisionChange: AdminExtensionRevisionChange | null;
   plugins: BootstrapPlugin[];
   diagnostics: ExtensionDiagnostic[];
   menuItems: AdminExtensionMenuEntry[];
   settingsNamespaces: AdminExtensionSettingsNamespace[];
+  fieldRenderers: AdminExtensionFieldRendererEntry[];
+  slots: AdminExtensionSlotEntry[];
   isLoading: boolean;
   degraded: boolean;
   error: Error | null;
+  dismissRevisionChange: () => void;
   getPlugin: (pluginName: string) => BootstrapPlugin | null;
+  getFieldRenderer: (typeName: string) => AdminExtensionFieldRendererEntry | null;
+  getSlots: (slotId: string, contentTypeApiId?: string) => AdminExtensionSlotEntry[];
   findRoute: (pluginName: string, path: string) => BootstrapRouteContribution | null;
   findSettingsPage: (pluginName: string, path: string) => MatchedSettingsPage | null;
   getSettingsNamespace: (namespace: string) => AdminExtensionSettingsNamespace | null;
