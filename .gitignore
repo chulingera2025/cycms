@@ -4,7 +4,6 @@ target
 /.claude
 /.codex
 /.vscode
-node_modules
 .DS_Store
 .idea
 *.iml
