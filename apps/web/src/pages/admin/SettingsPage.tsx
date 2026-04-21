@@ -1,131 +1,199 @@
 import { useState } from 'react';
-import { useAsync } from '@/hooks/useAsync';
-import { settingsApi } from '@/lib/api';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { Button, Empty, Form, Input, Popconfirm, Space, Table, Tabs } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import { Pencil, Plus, Save, X } from 'lucide-react';
+import {
+  useDeleteSetting,
+  useSetSetting,
+  useSettings,
+} from '@/features/settings/hooks';
+import { toast } from '@/lib/toast';
 import type { SettingsEntry } from '@/types';
 
-const NAMESPACES = ['system', 'content', 'media', 'auth'];
+const NAMESPACES = [
+  { key: 'system', label: '系统' },
+  { key: 'content', label: '内容' },
+  { key: 'media', label: '媒体' },
+  { key: 'auth', label: '认证' },
+];
 
-export default function SettingsPage() {
-  const [namespace, setNamespace] = useState('system');
-  const { data: settings, loading, refetch } = useAsync(
-    () => settingsApi.get(namespace),
-    [namespace],
-  );
+function formatValue(value: unknown): string {
+  return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+}
+
+function parseValue(input: string): unknown {
+  try {
+    return JSON.parse(input);
+  } catch {
+    return input;
+  }
+}
+
+function NamespacePanel({ namespace }: { namespace: string }) {
+  const { data: entries = [], isLoading } = useSettings(namespace);
+  const setMutation = useSetSetting();
+  const delMutation = useDeleteSetting();
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [newKey, setNewKey] = useState('');
-  const [newValue, setNewValue] = useState('');
+  const [newForm] = Form.useForm<{ key: string; value: string }>();
 
-  function startEdit(entry: SettingsEntry) {
+  function start(entry: SettingsEntry) {
     setEditKey(entry.key);
-    setEditValue(typeof entry.value === 'string' ? entry.value : JSON.stringify(entry.value, null, 2));
+    setEditValue(formatValue(entry.value));
   }
 
-  async function saveEdit() {
-    if (!editKey) return;
-    try {
-      const value = JSON.parse(editValue);
-      await settingsApi.set(namespace, editKey, value);
-    } catch {
-      await settingsApi.set(namespace, editKey, editValue);
-    }
+  async function save(key: string) {
+    await setMutation.mutateAsync({ namespace, key, value: parseValue(editValue) });
+    toast.success('已保存');
     setEditKey(null);
-    refetch();
   }
 
-  async function addNew() {
-    if (!newKey) return;
-    let value: unknown = newValue;
-    try { value = JSON.parse(newValue); } catch { /* use as string */ }
-    await settingsApi.set(namespace, newKey, value);
-    setNewKey('');
-    setNewValue('');
-    refetch();
+  async function add(values: { key: string; value?: string }) {
+    await setMutation.mutateAsync({
+      namespace,
+      key: values.key,
+      value: parseValue(values.value ?? ''),
+    });
+    toast.success(`已添加 ${values.key}`);
+    newForm.resetFields();
   }
+
+  const columns: ColumnsType<SettingsEntry> = [
+    {
+      title: '键',
+      dataIndex: 'key',
+      key: 'key',
+      width: 220,
+      render: (v: string) => <code className="font-mono text-sm text-text">{v}</code>,
+    },
+    {
+      title: '值',
+      dataIndex: 'value',
+      key: 'value',
+      render: (_: unknown, row) =>
+        editKey === row.key ? (
+          <Input.TextArea
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            autoSize={{ minRows: 2, maxRows: 8 }}
+          />
+        ) : (
+          <pre className="m-0 max-h-32 overflow-auto rounded bg-surface-alt p-2 font-mono text-xs text-text">
+            {formatValue(row.value)}
+          </pre>
+        ),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 200,
+      render: (_: unknown, row) =>
+        editKey === row.key ? (
+          <Space size="small">
+            <Button
+              size="small"
+              type="primary"
+              icon={<Save size={12} />}
+              loading={setMutation.isPending}
+              onClick={() => save(row.key)}
+            >
+              保存
+            </Button>
+            <Button size="small" icon={<X size={12} />} onClick={() => setEditKey(null)}>
+              取消
+            </Button>
+          </Space>
+        ) : (
+          <Space size="small">
+            <Button
+              size="small"
+              icon={<Pencil size={12} />}
+              onClick={() => start(row)}
+            >
+              编辑
+            </Button>
+            <Popconfirm
+              title="删除配置"
+              description={`删除 ${row.key}？`}
+              okButtonProps={{ danger: true }}
+              okText="删除"
+              cancelText="取消"
+              onConfirm={async () => {
+                await delMutation.mutateAsync({ namespace, key: row.key });
+                toast.success(`已删除 ${row.key}`);
+              }}
+            >
+              <Button size="small" danger>
+                删除
+              </Button>
+            </Popconfirm>
+          </Space>
+        ),
+    },
+  ];
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <h1>系统设置</h1>
-        <select value={namespace} onChange={(e) => setNamespace(e.target.value)}>
-          {NAMESPACES.map((ns) => (
-            <option key={ns} value={ns}>{ns}</option>
-          ))}
-        </select>
-      </div>
+    <div>
+      <Table<SettingsEntry>
+        rowKey="key"
+        columns={columns}
+        dataSource={entries}
+        loading={isLoading}
+        pagination={false}
+        size="middle"
+        locale={{
+          emptyText: <Empty description={`${namespace} 命名空间暂无配置`} />,
+        }}
+      />
 
-      {loading ? (
-        <LoadingSpinner />
-      ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>键</th>
-              <th>值</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {settings?.map((entry) => (
-              <tr key={entry.key}>
-                <td><code>{entry.key}</code></td>
-                <td>
-                  {editKey === entry.key ? (
-                    <textarea
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      rows={3}
-                    />
-                  ) : (
-                    <pre className="settings-value">
-                      {typeof entry.value === 'string'
-                        ? entry.value
-                        : JSON.stringify(entry.value, null, 2)}
-                    </pre>
-                  )}
-                </td>
-                <td className="action-cell">
-                  {editKey === entry.key ? (
-                    <>
-                      <button className="btn btn-sm btn-primary" onClick={saveEdit}>保存</button>
-                      <button className="btn btn-sm" onClick={() => setEditKey(null)}>取消</button>
-                    </>
-                  ) : (
-                    <>
-                      <button className="btn btn-sm" onClick={() => startEdit(entry)}>编辑</button>
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={async () => {
-                          if (confirm(`确定删除 ${entry.key}？`)) {
-                            await settingsApi.delete(namespace, entry.key);
-                            refetch();
-                          }
-                        }}
-                      >
-                        删除
-                      </button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-            <tr>
-              <td>
-                <input placeholder="新键" value={newKey} onChange={(e) => setNewKey(e.target.value)} />
-              </td>
-              <td>
-                <input placeholder="新值" value={newValue} onChange={(e) => setNewValue(e.target.value)} />
-              </td>
-              <td>
-                <button className="btn btn-sm btn-primary" onClick={addNew} disabled={!newKey}>
-                  添加
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      )}
+      <div className="mt-4 rounded border border-dashed border-border bg-surface-alt p-4">
+        <div className="mb-2 font-medium text-text">添加配置</div>
+        <Form form={newForm} layout="inline" onFinish={add}>
+          <Form.Item name="key" rules={[{ required: true, message: '请输入键' }]}>
+            <Input placeholder="键名（例：site_name）" style={{ width: 220 }} />
+          </Form.Item>
+          <Form.Item name="value">
+            <Input
+              placeholder='值（字符串或 JSON，例："CyCMS" 或 42）'
+              style={{ width: 360 }}
+            />
+          </Form.Item>
+          <Form.Item>
+            <Button
+              type="primary"
+              htmlType="submit"
+              icon={<Plus size={14} />}
+              loading={setMutation.isPending}
+            >
+              添加
+            </Button>
+          </Form.Item>
+        </Form>
+      </div>
+    </div>
+  );
+}
+
+export default function SettingsPage() {
+  const [active, setActive] = useState('system');
+
+  return (
+    <div className="p-6">
+      <div className="mb-4">
+        <h1 className="m-0 text-xl font-semibold text-text">系统设置</h1>
+        <p className="mt-1 text-sm text-text-muted">
+          按命名空间管理键值配置；值可为字符串或 JSON
+        </p>
+      </div>
+      <Tabs
+        activeKey={active}
+        onChange={setActive}
+        items={NAMESPACES.map((ns) => ({
+          key: ns.key,
+          label: ns.label,
+          children: <NamespacePanel namespace={ns.key} />,
+        }))}
+      />
     </div>
   );
 }
