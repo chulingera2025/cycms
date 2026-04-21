@@ -40,6 +40,7 @@
 - **媒体资源管理**  — 上传、MIME 校验、大小限制、引用计数与删除保护。
 - **双插件运行时**  — 同时支持 Native Rust 插件（高性能，完全信任）与
   WebAssembly 插件（沙箱隔离，基于 `wasmtime`）。
+- **后台前端扩展平台**  — 宿主控制插件前端资产、bootstrap registry、diagnostics 与 telemetry，并将页面、settings page、field renderer、slot 挂载到官方后台。
 - **事件总线**  — 基于 `tokio::sync::broadcast` 的事件派发，插件可订阅业务事件。
 - **多数据库后端**  — 通过 `sqlx` 支持 **PostgreSQL / MySQL / SQLite**，
   内置迁移引擎，无需 `sqlx-cli`。
@@ -193,6 +194,7 @@ export CYCMS__AUTH__JWT_SECRET="$(openssl rand -hex 32)"
 | `[events]`     | 事件通道容量、handler 超时                             |
 | `[observability]` | 日志格式 / 级别、是否写入审计日志                   |
 | `[plugins]`    | 插件目录、是否启用 Wasm                                |
+| `[admin_extensions]` | 后台插件前端的 CSP、report-only 与最近事件容量   |
 
 完整示例见根目录 [`cycms.toml`](./cycms.toml)。
 
@@ -215,6 +217,7 @@ export CYCMS__AUTH__JWT_SECRET="$(openssl rand -hex 32)"
 | 用户 / 角色 | `/users`、`/roles`、`/roles/permissions`                     |
 | 设置        | `/settings/{namespace}[/{key}]`                              |
 | 插件        | `/plugins`（安装 / 启用 / 禁用 / 卸载）                      |
+| 后台扩展    | `/admin/extensions/bootstrap`、`/admin/extensions/diagnostics`、`/admin/extensions/events` |
 | 公开访问    | `/public/content/{type}` 等（仅已发布内容）                  |
 | 插件路由    | `/x/{plugin_name}/*`（由已启用插件注册）                     |
 
@@ -222,12 +225,23 @@ export CYCMS__AUTH__JWT_SECRET="$(openssl rand -hex 32)"
 
 ## 插件系统
 
-`cycms` 提供两种插件运行时，共享同一套 [`cycms-plugin-api`](./crates/cycms-plugin-api) trait：
+`cycms` 的插件系统包含业务运行时和后台前端扩展两部分。
+
+### 业务插件运行时
+
+业务插件共享同一套 [`cycms-plugin-api`](./crates/cycms-plugin-api) trait：
 
 - **Native 插件** — 动态库形式，性能接近原生；**完全信任**，无沙箱。
   适合可信第一方扩展。
 - **Wasm 插件** — 基于 `wasmtime` + WASI，在沙箱内运行，跨平台分发。
   适合第三方或不受信任的扩展。
+
+### 后台前端扩展
+
+- 已启用插件可以声明 admin frontend manifest，由宿主生成同源资产 URL。
+- 宿主通过 bootstrap registry 按权限过滤菜单、页面、settings page、field renderer 和 slot。
+- 官方后台通过固定 namespace 路由与 module host 挂载插件页面，并提供 diagnostics 与 recent events。
+- `admin_extensions` 配置节控制 CSP、report-only rollout 和最近事件保留容量。
 
 生成插件脚手架：
 

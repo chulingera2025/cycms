@@ -15,6 +15,11 @@ disable-model-invocation: false
 - 开发或修改 admin extension 的 bootstrap、asset gateway、namespace route、field renderer、slot。
 - 调整插件相关的 CSP、同源资产加载、遥测、诊断接口或运维面板。
 
+## Also Load When Needed
+
+- 如果插件任务主要落在 Rust 领域逻辑、API 装配或配置层，再按需加载 `cycms-backend-development`。
+- 如果插件任务主要落在 React 后台、module host consumer 或页面交互层，再按需加载 `cycms-web-development`。
+
 ## What This Skill Produces
 
 - 把插件相关需求先切成 runtime、API、安全、前端宿主、运维可见性几个边界，再做最小闭环实现。
@@ -31,6 +36,7 @@ disable-model-invocation: false
 
 2. 先读当前契约和相邻消费方，不要只看定义。
    - 先看 [插件关键表面与验证命令](./references/plugin-surfaces.md)
+   - 需要先整理改动范围时，先从 [插件改动模板](./assets/plugin-change-template.md) 起草。
    - 需要改 bootstrap / diagnostics 时，同时看后端返回结构和前端消费点。
    - 需要改 field renderer / slot 时，同时看 host context 定义和内容编辑器消费方。
 
@@ -77,3 +83,4 @@ disable-model-invocation: false
 ## References
 
 - [插件关键表面与验证命令](./references/plugin-surfaces.md)
+- [插件改动模板](./assets/plugin-change-template.md)
