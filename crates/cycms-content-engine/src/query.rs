@@ -65,7 +65,7 @@ pub struct FilterSpec {
     pub value: Value,
 }
 
-/// 13 种筛选算子（Req 4.3）。
+/// 13 种筛选算子。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterOperator {
     Eq,

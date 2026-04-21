@@ -18,6 +18,7 @@ const PluginsPage = lazy(() => import('@/pages/admin/PluginsPage'));
 const UsersPage = lazy(() => import('@/pages/admin/UsersPage'));
 const RolesPage = lazy(() => import('@/pages/admin/RolesPage'));
 const SettingsPage = lazy(() => import('@/pages/admin/SettingsPage'));
+const PluginNamespacePage = lazy(() => import('@/pages/admin/PluginNamespacePage'));
 
 // Public pages
 const HomePage = lazy(() => import('@/pages/public/HomePage'));
@@ -73,6 +74,7 @@ export const router = createBrowserRouter([
               { path: 'users', element: <Lazy><UsersPage /></Lazy> },
               { path: 'roles', element: <Lazy><RolesPage /></Lazy> },
               { path: 'settings', element: <Lazy><SettingsPage /></Lazy> },
+              { path: 'x/:plugin/*', element: <Lazy><PluginNamespacePage /></Lazy> },
             ],
           },
         ],

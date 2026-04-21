@@ -32,6 +32,10 @@ export const qk = {
     list: ['plugins'] as const,
     detail: (name: string) => ['plugins', name] as const,
   },
+  adminExtensions: {
+    bootstrap: ['admin-extensions', 'bootstrap'] as const,
+    diagnostics: ['admin-extensions', 'diagnostics'] as const,
+  },
   settings: {
     schemas: ['settings', 'schemas'] as const,
     ns: (namespace: string) => ['settings', namespace] as const,

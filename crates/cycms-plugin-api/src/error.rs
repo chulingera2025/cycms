@@ -7,7 +7,7 @@ pub enum RegistryError {
     #[error("service not registered: {key}")]
     ServiceNotFound { key: String },
 
-    /// 服务已注册但被标记为不可用（对应 Req 13.3：被依赖插件未启用）。
+    /// 服务已注册但被标记为不可用。
     #[error("service unavailable: {key}")]
     ServiceUnavailable { key: String },
 
@@ -15,7 +15,7 @@ pub enum RegistryError {
     #[error("service type mismatch for key {key}: expected {expected}")]
     TypeMismatch { key: String, expected: &'static str },
 
-    /// key 不符合 `{plugin_name}.{service_name}` 两段式格式（对应 Req 13.1）。
+    /// key 不符合 `{plugin_name}.{service_name}` 两段式格式。
     #[error("invalid service key: {0}")]
     InvalidKey(String),
 }
@@ -26,7 +26,7 @@ impl From<RegistryError> for Error {
             RegistryError::ServiceNotFound { key } => Self::NotFound {
                 message: format!("service not registered: {key}"),
             },
-            // 插件未启用导致的不可用走 PluginError，语义最贴合 Req 13.3
+            // 插件未启用导致的不可用走 PluginError，其他原因导致的不可用走 InternalError
             RegistryError::ServiceUnavailable { key } => Self::PluginError {
                 message: format!("service unavailable: {key}"),
                 source: None,

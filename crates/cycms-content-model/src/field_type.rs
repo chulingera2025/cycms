@@ -1,4 +1,4 @@
-//! 字段类型插件扩展的进程内注册表（Req 3.6）。
+//! 字段类型插件扩展的进程内注册表。
 //!
 //! 内置字段类型（[`crate::model::FieldType`] 的前八个变体）不入注册表，由
 //! [`crate::validation`] 直接静态分派；本注册表只承载 [`crate::model::FieldType::Custom`]

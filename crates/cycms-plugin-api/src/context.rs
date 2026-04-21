@@ -32,7 +32,7 @@ pub struct PluginContext {
     pub event_bus: Arc<EventBus>,
     /// 系统与插件设置的统一访问门面。
     pub settings_manager: Arc<SettingsManager>,
-    /// 内容类型注册表：插件可读取现有类型、注册自定义字段类型（Req 3.6）。
+    /// 内容类型注册表：插件可读取现有类型、注册自定义字段类型。
     pub content_model: Arc<ContentModelRegistry>,
     /// 内容实例引擎：插件可执行 CRUD / 查询 / 删除。
     pub content_engine: Arc<ContentEngine>,

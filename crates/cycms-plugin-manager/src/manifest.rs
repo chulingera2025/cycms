@@ -107,7 +107,9 @@ const fn default_scope() -> PermissionScope {
 /// 前端入口信息（Req 20.5）。v0.1 仅存储路径字面量，AdminWeb 负责动态加载。
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FrontendSpec {
-    pub entry: String,
+    pub manifest: String,
+    #[serde(default)]
+    pub required: bool,
 }
 
 impl PluginManifest {
@@ -172,6 +174,13 @@ impl PluginManifest {
                 check_permission_segment("permissions.resource", &entry.resource)?;
                 check_permission_segment("permissions.action", &entry.action)?;
             }
+        }
+        if let Some(frontend) = &self.frontend
+            && frontend.manifest.trim().is_empty()
+        {
+            return Err(PluginManagerError::InvalidManifest(
+                "frontend.manifest must not be empty".into(),
+            ));
         }
         Ok(())
     }
@@ -310,7 +319,8 @@ definitions = [
 ]
 
 [frontend]
-entry = "admin/index.js"
+manifest = "admin/manifest.json"
+required = true
 "#;
         let m = PluginManifest::from_toml_str(toml_text).unwrap();
         assert_eq!(m.plugin.kind, PluginKind::Wasm);
@@ -321,7 +331,8 @@ entry = "admin/index.js"
         assert_eq!(defs.len(), 2);
         assert_eq!(defs[0].scope, PermissionScope::All);
         assert_eq!(defs[1].scope, PermissionScope::Own);
-        assert_eq!(m.frontend.as_ref().unwrap().entry, "admin/index.js");
+        assert_eq!(m.frontend.as_ref().unwrap().manifest, "admin/manifest.json");
+        assert!(m.frontend.as_ref().unwrap().required);
         assert_eq!(m.migrations, vec!["migrations".to_owned()]);
     }
 

@@ -17,10 +17,16 @@ pub enum ContentModelError {
     InvalidField(String),
 
     #[error("content type update blocked for `{api_id}`")]
-    DestructiveChangeBlocked { api_id: String, reasons: Vec<String> },
+    DestructiveChangeBlocked {
+        api_id: String,
+        reasons: Vec<String>,
+    },
 
     #[error("content type delete blocked for `{api_id}`")]
-    DeleteBlocked { api_id: String, reasons: Vec<String> },
+    DeleteBlocked {
+        api_id: String,
+        reasons: Vec<String>,
+    },
 
     #[error("schema violation")]
     SchemaViolation { errors: Vec<FieldViolation> },

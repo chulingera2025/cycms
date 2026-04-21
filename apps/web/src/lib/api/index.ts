@@ -1,4 +1,5 @@
 export { api, ApiError, setTokens, clearTokens, getAccessToken } from './client';
+export { adminExtensionsApi } from './admin-extensions';
 export { authApi } from './auth';
 export { contentTypesApi } from './content-types';
 export { contentApi } from './content';

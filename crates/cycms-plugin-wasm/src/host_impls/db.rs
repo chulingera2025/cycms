@@ -145,8 +145,7 @@ fn mysql_column_to_json(row: &MySqlRow, idx: usize) -> Value {
             .ok()
             .flatten()
             .unwrap_or(Value::Null),
-        "BINARY" | "VARBINARY" | "BIT" | "BLOB" | "TINYBLOB" | "MEDIUMBLOB"
-        | "LONGBLOB" => row
+        "BINARY" | "VARBINARY" | "BIT" | "BLOB" | "TINYBLOB" | "MEDIUMBLOB" | "LONGBLOB" => row
             .try_get::<Option<Vec<u8>>, _>(idx)
             .ok()
             .flatten()
@@ -242,11 +241,7 @@ async fn postgres_query(
     Ok(out)
 }
 
-async fn postgres_execute(
-    pool: &sqlx::PgPool,
-    sql: &str,
-    params: &[Value],
-) -> Result<u64, String> {
+async fn postgres_execute(pool: &sqlx::PgPool, sql: &str, params: &[Value]) -> Result<u64, String> {
     let mut q = sqlx::query(sql);
     for v in params {
         q = bind_postgres(q, v);
@@ -281,11 +276,7 @@ async fn mysql_query(
     Ok(out)
 }
 
-async fn mysql_execute(
-    pool: &sqlx::MySqlPool,
-    sql: &str,
-    params: &[Value],
-) -> Result<u64, String> {
+async fn mysql_execute(pool: &sqlx::MySqlPool, sql: &str, params: &[Value]) -> Result<u64, String> {
     let mut q = sqlx::query(sql);
     for v in params {
         q = bind_mysql(q, v);

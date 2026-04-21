@@ -1,3 +1,4 @@
+pub mod admin_extensions;
 pub mod auth;
 pub mod content;
 pub mod content_types;

@@ -126,10 +126,9 @@ mod tests {
             "required": ["api_key"]
         });
 
-        assert!(validate_settings_instance(
-            &schema,
-            &json!({ "api_key": "secret", "enabled": true })
-        )
-        .is_ok());
+        assert!(
+            validate_settings_instance(&schema, &json!({ "api_key": "secret", "enabled": true }))
+                .is_ok()
+        );
     }
 }

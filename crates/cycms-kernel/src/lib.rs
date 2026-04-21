@@ -466,7 +466,7 @@ async fn shutdown_signal() {
 }
 
 /// 启动期把核心子系统注册到 `ServiceRegistry`，供插件通过
-/// `{plugin_name}.{service_name}` 约定查询（对齐 Req 13.1）。
+/// `{plugin_name}.{service_name}` 约定查询。
 ///
 /// 核心子系统统一使用 `system` 作为 plugin 段，service 段沿用子系统约定名。
 #[allow(clippy::too_many_arguments)]

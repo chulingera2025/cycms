@@ -96,8 +96,6 @@ impl RevisionManager {
 
     /// 基于目标版本的快照创建新版本，并将 entry fields 回写为目标快照。
     ///
-    /// 不删除中间版本，满足 Req 5.4 的"不可变历史"约束。
-    ///
     /// # Errors
     /// - 目标版本不存在 → [`RevisionError::RevisionNotFound`]
     /// - DB 故障 → [`RevisionError::Database`]

@@ -233,9 +233,118 @@ export interface UpdateUserInput {
 // ── Settings ─────────────────────────────────────────────────────────────
 
 export interface SettingsEntry {
+  id: string;
   namespace: string;
   key: string;
   value: unknown;
+  updated_at: string;
+}
+
+export interface JsonSchemaNode {
+  type?: string | string[];
+  title?: string;
+  description?: string;
+  default?: unknown;
+  enum?: unknown[];
+  format?: string;
+  properties?: Record<string, JsonSchemaNode>;
+  required?: string[];
+  items?: JsonSchemaNode;
+  [key: string]: unknown;
+}
+
+export interface PluginSchema {
+  plugin_name: string;
+  schema: JsonSchemaNode;
+  created_at: string;
+}
+
+export interface ContributionMatchSpec {
+  contentTypeApiIds: string[];
+}
+
+export interface ExtensionDiagnostic {
+  pluginName: string;
+  pluginVersion: string;
+  severity: string;
+  code: string;
+  message: string;
+}
+
+export interface BootstrapMenuContribution {
+  id: string;
+  label: string;
+  zone: string;
+  icon?: string;
+  order: number;
+  to: string;
+  fullPath: string;
+  requiredPermissions: string[];
+}
+
+export interface BootstrapRouteContribution {
+  id: string;
+  path: string;
+  fullPath: string;
+  moduleUrl: string;
+  styles: string[];
+  kind: string;
+  title: string;
+  requiredPermissions: string[];
+  match: ContributionMatchSpec;
+}
+
+export interface BootstrapSlotContribution {
+  id: string;
+  slot: string;
+  order: number;
+  moduleUrl: string;
+  styles: string[];
+  requiredPermissions: string[];
+  match: ContributionMatchSpec;
+}
+
+export interface BootstrapFieldRendererContribution {
+  id: string;
+  typeName: string;
+  moduleUrl: string;
+  styles: string[];
+  requiredPermissions: string[];
+}
+
+export interface BootstrapSettingsPage {
+  path: string;
+  fullPath: string;
+  moduleUrl: string;
+  styles: string[];
+}
+
+export interface BootstrapSettingsContribution {
+  namespace: string;
+  requiredPermissions: string[];
+  customPage: BootstrapSettingsPage | null;
+}
+
+export interface BootstrapPlugin {
+  name: string;
+  version: string;
+  menus: BootstrapMenuContribution[];
+  routes: BootstrapRouteContribution[];
+  slots: BootstrapSlotContribution[];
+  fieldRenderers: BootstrapFieldRendererContribution[];
+  settings: BootstrapSettingsContribution | null;
+}
+
+export interface AdminExtensionBootstrap {
+  revision: string;
+  shellSdkVersion: string;
+  plugins: BootstrapPlugin[];
+  diagnostics: ExtensionDiagnostic[];
+}
+
+export interface AdminExtensionDiagnostics {
+  revision: string;
+  diagnostics: ExtensionDiagnostic[];
 }
 
 // ── Revisions ────────────────────────────────────────────────────────────

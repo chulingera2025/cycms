@@ -10,6 +10,8 @@
 
 mod discovery;
 mod error;
+mod frontend_manifest;
+mod frontend_snapshot;
 mod manifest;
 mod model;
 mod repository;
@@ -19,6 +21,21 @@ mod service;
 
 pub use discovery::{DiscoveredPlugin, discover_plugin_dir, scan_plugins_dir};
 pub use error::PluginManagerError;
+pub use frontend_manifest::{
+    ADMIN_SHELL_SDK_VERSION, AdminFrontendManifest, ContributionMatchSpec, CustomPageContribution,
+    FieldRendererContribution, FrontendAsset, MenuContribution, RouteContribution,
+    SettingsContribution, SlotContribution, load_frontend_manifest,
+};
+pub use frontend_snapshot::{
+    AdminExtensionBootstrap, AdminExtensionDiagnostics, BootstrapFieldRendererContribution,
+    BootstrapMenuContribution, BootstrapPlugin, BootstrapRouteContribution,
+    BootstrapSettingsContribution, BootstrapSettingsPage, BootstrapSlotContribution,
+    ExtensionDiagnostic, FrontendCompatibility, FrontendRuntimeState, NormalizedFrontendAsset,
+    NormalizedFrontendFile, NormalizedFrontendSnapshot, ResolvedPluginAsset,
+    build_frontend_runtime_state, extension_revision_token, frontend_runtime_state,
+    insert_frontend_runtime_state, plugin_admin_full_path, resolve_plugin_asset,
+    validate_cross_plugin_conflicts,
+};
 pub use manifest::{
     CompatibilitySpec, DependencySpec, FrontendSpec, PermissionEntry, PermissionsSpec, PluginKind,
     PluginManifest, PluginMeta,

@@ -193,7 +193,9 @@ fn build_list_plan(
         params.push(mime.clone());
     }
     if let Some(fname) = &query.filename_contains {
-        conditions.push("(filename LIKE ? ESCAPE '\\' OR original_filename LIKE ? ESCAPE '\\')".to_owned());
+        conditions.push(
+            "(filename LIKE ? ESCAPE '\\' OR original_filename LIKE ? ESCAPE '\\')".to_owned(),
+        );
         let pattern = format!("%{}%", escape_like_pattern(fname));
         params.push(pattern.clone());
         params.push(pattern);

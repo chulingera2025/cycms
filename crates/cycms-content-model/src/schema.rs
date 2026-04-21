@@ -1,4 +1,4 @@
-//! 从 [`ContentTypeDefinition`] 生成 `OpenAPI` / JSON Schema 片段（Req 3.5）。
+//! 从 [`ContentTypeDefinition`] 生成 `OpenAPI` / JSON Schema 片段。
 //!
 //! 输出结构：
 //! ```json

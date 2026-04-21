@@ -15,7 +15,7 @@ pub struct PluginRouteDoc {
     pub methods: Vec<String>,
 }
 
-/// Native 插件必须实现的 trait（Req 11.1 / 11.2 / 11.3 / 11.4）。
+/// Native 插件必须实现的 trait。
 ///
 /// 只在 `cycms-plugin-api` 定义 trait 本身与宿主可感知的返回值形状；具体加载、调度、
 /// Router 合并、服务批量注册由 `NativePluginRuntime` 完成。
@@ -66,7 +66,7 @@ pub trait Plugin: Send + Sync {
     /// 插件对外暴露的服务列表：`(service_name, Arc<impl Send+Sync+'static>)`。
     ///
     /// Runtime 会按 `{plugin_name}.{service_name}` 组装完整 key 后写入 `ServiceRegistry`
-    /// （对齐 Req 13.1）。`service_name` 由实现方自行约定，不得包含 `.`。
+    /// `service_name` 由实现方自行约定，不得包含 `.`。
     fn services(&self) -> Vec<(String, Arc<dyn Any + Send + Sync>)> {
         Vec::new()
     }

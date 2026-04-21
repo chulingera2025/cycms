@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use cycms_auth::AuthEngine;
 use cycms_config::{AuthConfig, ContentConfig, DatabaseConfig, DatabaseDriver, MediaConfig};
 use cycms_content_engine::ContentEngine;
@@ -21,6 +23,7 @@ use cycms_db::DatabasePool;
 use cycms_events::EventBus;
 use cycms_media::MediaManager;
 use cycms_migrate::MigrationEngine;
+use cycms_permission::NewRoleRow;
 use cycms_permission::PermissionEngine;
 use cycms_plugin_api::{PluginContext, ServiceRegistry};
 use cycms_plugin_manager::{
@@ -30,8 +33,9 @@ use cycms_plugin_manager::{
 use cycms_publish::PublishManager;
 use cycms_revision::RevisionManager;
 use cycms_settings::SettingsManager;
-use cycms_permission::NewRoleRow;
 use semver::Version;
+use serde_json::json;
+use sha2::{Digest, Sha384};
 use tempfile::{TempDir, tempdir};
 
 fn workspace_system_migrations() -> PathBuf {
@@ -198,6 +202,76 @@ cycms = ">=0.1.0"
 {extras}"#
     );
     fs::write(dir.join("plugin.toml"), text).unwrap();
+}
+
+fn write_frontend_manifest(
+    plugin_dir: &Path,
+    name: &str,
+    version: &str,
+    sdk_version: &str,
+    required_permissions: &[&str],
+) {
+    let admin_dir = plugin_dir.join("admin");
+    fs::create_dir_all(&admin_dir).unwrap();
+
+    let module_body = format!("console.log('{name} admin');");
+    fs::write(admin_dir.join("main.js"), &module_body).unwrap();
+    fs::write(admin_dir.join("main.css"), ".plugin-admin{display:block;}").unwrap();
+
+    let module_digest = Sha384::digest(module_body.as_bytes());
+    let module_integrity = format!("sha384-{}", BASE64_STANDARD.encode(module_digest));
+    let permissions: Vec<String> = required_permissions
+        .iter()
+        .map(|value| (*value).to_owned())
+        .collect();
+
+    let manifest = json!({
+        "schemaVersion": 1,
+        "sdkVersion": sdk_version,
+        "pluginName": name,
+        "pluginVersion": version,
+        "assets": [
+            {
+                "id": format!("asset.{name}.main"),
+                "path": "admin/main.js",
+                "sha384": module_integrity,
+                "contentType": "text/javascript",
+                "styles": ["admin/main.css"]
+            }
+        ],
+        "menus": [
+            {
+                "id": format!("menu.{name}.main"),
+                "label": format!("{} menu", name),
+                "zone": "content",
+                "order": 10,
+                "to": format!("/{name}"),
+                "requiredPermissions": permissions
+            }
+        ],
+        "routes": [
+            {
+                "id": format!("route.{name}.main"),
+                "path": format!("/{name}"),
+                "moduleAssetId": format!("asset.{name}.main"),
+                "kind": "page",
+                "title": format!("{} page", name),
+                "requiredPermissions": permissions,
+                "match": {}
+            }
+        ]
+    });
+    fs::write(
+        admin_dir.join("manifest.json"),
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+}
+
+fn rewrite_frontend_manifest(plugin_dir: &Path, transform: impl FnOnce(String) -> String) {
+    let path = plugin_dir.join("admin/manifest.json");
+    let text = fs::read_to_string(&path).unwrap();
+    fs::write(path, transform(text)).unwrap();
 }
 
 #[tokio::test]
@@ -475,7 +549,10 @@ cycms = ">=0.1.0"
 
     let discovered = scan_plugins_dir(&harness.plugins_root).unwrap();
     let err = harness.manager.install(&discovered[0]).await.unwrap_err();
-    assert!(matches!(err, cycms_core::Error::Internal { .. }), "got: {err:?}");
+    assert!(
+        matches!(err, cycms_core::Error::Internal { .. }),
+        "got: {err:?}"
+    );
 
     let DatabasePool::Sqlite(pool) = harness.pool.as_ref() else {
         panic!("expected sqlite");
@@ -509,6 +586,181 @@ async fn install_blocks_when_host_incompatible() {
         .unwrap()
         .replace(r#"cycms = ">=0.1.0""#, r#"cycms = ">=9.0.0""#);
     fs::write(&plugin_toml, text).unwrap();
+
+    let discovered = scan_plugins_dir(&harness.plugins_root).unwrap();
+    let err = harness.manager.install(&discovered[0]).await.unwrap_err();
+    assert!(matches!(err, cycms_core::Error::ValidationError { .. }));
+}
+
+#[tokio::test]
+async fn frontend_bootstrap_and_asset_resolution_work_after_enable() {
+    let harness = fresh_harness().await;
+    write_plugin(
+        &harness.plugins_root,
+        "blog",
+        "0.1.0",
+        r#"
+[frontend]
+manifest = "admin/manifest.json"
+required = true
+"#,
+    );
+    write_frontend_manifest(
+        &harness.plugins_root.join("blog"),
+        "blog",
+        "0.1.0",
+        "^1.0.0",
+        &["content.entry.create"],
+    );
+
+    let discovered = scan_plugins_dir(&harness.plugins_root).unwrap();
+    harness.manager.install(&discovered[0]).await.unwrap();
+    harness.manager.enable("blog").await.unwrap();
+
+    let bootstrap = harness
+        .manager
+        .admin_extension_bootstrap("user-1", &["super_admin".to_owned()])
+        .await
+        .unwrap();
+    assert!(bootstrap.diagnostics.is_empty());
+    assert_eq!(bootstrap.plugins.len(), 1);
+    assert_eq!(bootstrap.plugins[0].menus.len(), 1);
+    assert_eq!(bootstrap.plugins[0].routes.len(), 1);
+
+    let module_url = &bootstrap.plugins[0].routes[0].module_url;
+    let suffix = module_url
+        .strip_prefix("/api/v1/plugin-assets/blog/0.1.0/")
+        .unwrap();
+    let (url_hash, asset_path) = suffix.split_once('/').unwrap();
+    let asset = harness
+        .manager
+        .resolve_frontend_asset("blog", "0.1.0", url_hash, asset_path)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(asset.content_type, "text/javascript");
+    assert_eq!(
+        fs::read_to_string(asset.absolute_path).unwrap(),
+        "console.log('blog admin');"
+    );
+}
+
+#[tokio::test]
+async fn bootstrap_omits_plugin_when_user_lacks_required_permissions() {
+    let harness = fresh_harness().await;
+    write_plugin(
+        &harness.plugins_root,
+        "blog",
+        "0.1.0",
+        r#"
+[frontend]
+manifest = "admin/manifest.json"
+required = true
+"#,
+    );
+    write_frontend_manifest(
+        &harness.plugins_root.join("blog"),
+        "blog",
+        "0.1.0",
+        "^1.0.0",
+        &["content.entry.create"],
+    );
+
+    let discovered = scan_plugins_dir(&harness.plugins_root).unwrap();
+    harness.manager.install(&discovered[0]).await.unwrap();
+    harness.manager.enable("blog").await.unwrap();
+
+    let bootstrap = harness
+        .manager
+        .admin_extension_bootstrap("user-2", &[])
+        .await
+        .unwrap();
+    assert!(bootstrap.plugins.is_empty());
+    assert!(bootstrap.diagnostics.is_empty());
+}
+
+#[tokio::test]
+async fn required_incompatible_frontend_blocks_enablement() {
+    let harness = fresh_harness().await;
+    write_plugin(
+        &harness.plugins_root,
+        "seo",
+        "0.1.0",
+        r#"
+[frontend]
+manifest = "admin/manifest.json"
+required = true
+"#,
+    );
+    write_frontend_manifest(
+        &harness.plugins_root.join("seo"),
+        "seo",
+        "0.1.0",
+        "^2.0.0",
+        &[],
+    );
+
+    let discovered = scan_plugins_dir(&harness.plugins_root).unwrap();
+    harness.manager.install(&discovered[0]).await.unwrap();
+    let err = harness.manager.enable("seo").await.unwrap_err();
+    assert!(matches!(err, cycms_core::Error::ValidationError { .. }));
+
+    let diagnostics = harness.manager.admin_extension_diagnostics().await.unwrap();
+    assert_eq!(diagnostics.diagnostics.len(), 1);
+    assert_eq!(diagnostics.diagnostics[0].severity, "error");
+}
+
+#[tokio::test]
+async fn optional_incompatible_frontend_is_suppressed_but_plugin_can_enable() {
+    let harness = fresh_harness().await;
+    write_plugin(
+        &harness.plugins_root,
+        "smtp",
+        "0.1.0",
+        r#"
+[frontend]
+manifest = "admin/manifest.json"
+required = false
+"#,
+    );
+    write_frontend_manifest(
+        &harness.plugins_root.join("smtp"),
+        "smtp",
+        "0.1.0",
+        "^2.0.0",
+        &[],
+    );
+
+    let discovered = scan_plugins_dir(&harness.plugins_root).unwrap();
+    harness.manager.install(&discovered[0]).await.unwrap();
+    harness.manager.enable("smtp").await.unwrap();
+
+    let bootstrap = harness
+        .manager
+        .admin_extension_bootstrap("user-1", &["super_admin".to_owned()])
+        .await
+        .unwrap();
+    assert!(bootstrap.plugins.is_empty());
+    assert_eq!(bootstrap.diagnostics.len(), 1);
+    assert_eq!(bootstrap.diagnostics[0].severity, "warning");
+}
+
+#[tokio::test]
+async fn install_rejects_frontend_manifest_with_bad_asset_digest() {
+    let harness = fresh_harness().await;
+    write_plugin(
+        &harness.plugins_root,
+        "commerce",
+        "0.1.0",
+        r#"
+[frontend]
+manifest = "admin/manifest.json"
+required = true
+"#,
+    );
+    let plugin_dir = harness.plugins_root.join("commerce");
+    write_frontend_manifest(&plugin_dir, "commerce", "0.1.0", "^1.0.0", &[]);
+    rewrite_frontend_manifest(&plugin_dir, |text| text.replace("sha384-", "sha384-bad-"));
 
     let discovered = scan_plugins_dir(&harness.plugins_root).unwrap();
     let err = harness.manager.install(&discovered[0]).await.unwrap_err();

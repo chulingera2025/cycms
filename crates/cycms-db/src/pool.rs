@@ -147,8 +147,8 @@ mod tests {
     impl TempDir {
         fn new() -> Self {
             let unique_id = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
-            let path = std::env::temp_dir()
-                .join(format!("cycms-db-tests-{}-{unique_id}", process::id()));
+            let path =
+                std::env::temp_dir().join(format!("cycms-db-tests-{}-{unique_id}", process::id()));
             fs::create_dir_all(&path).unwrap();
             Self { path }
         }

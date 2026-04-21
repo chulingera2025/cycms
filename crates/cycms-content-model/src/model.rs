@@ -43,7 +43,7 @@ impl std::str::FromStr for ContentTypeKind {
     }
 }
 
-/// `FieldType`：内置类型 + 插件自定义类型（Req 3.2 / 3.6）。
+/// `FieldType`：内置类型 + 插件自定义类型。
 ///
 /// Tagged enum 序列化：`{ "kind": "<snake_case>", ...payload }`。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -72,7 +72,7 @@ pub enum FieldType {
     },
 }
 
-/// Relation 字段的关联基数（Req 3.4）。
+/// Relation 字段的关联基数。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RelationKind {
@@ -81,7 +81,7 @@ pub enum RelationKind {
     ManyToMany,
 }
 
-/// 字段级校验规则（Req 3.2）。
+/// 字段级校验规则。
 ///
 /// Tagged enum 序列化：`{ "rule": "<snake_case>", ...payload }`。
 ///

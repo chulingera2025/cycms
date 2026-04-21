@@ -26,6 +26,15 @@ use serde_json::json;
 use tracing::{info, warn};
 
 use crate::discovery::DiscoveredPlugin;
+use crate::frontend_manifest::{ADMIN_SHELL_SDK_VERSION, load_frontend_manifest};
+use crate::frontend_snapshot::{
+    AdminExtensionBootstrap, AdminExtensionDiagnostics, BootstrapFieldRendererContribution,
+    BootstrapMenuContribution, BootstrapPlugin, BootstrapRouteContribution,
+    BootstrapSettingsContribution, BootstrapSettingsPage, BootstrapSlotContribution,
+    ExtensionDiagnostic, FrontendRuntimeState, ResolvedPluginAsset, build_frontend_runtime_state,
+    extension_revision_token, frontend_runtime_state, insert_frontend_runtime_state,
+    plugin_admin_full_path, resolve_plugin_asset, validate_cross_plugin_conflicts,
+};
 use crate::manifest::{PluginKind, PluginManifest};
 use crate::model::{NewPluginRow, PluginRecord, PluginStatus};
 use crate::repository::PluginRepository;
@@ -34,7 +43,7 @@ use crate::runtime::PluginRuntime;
 
 /// `PluginManager` 构造入参，封装 Kernel 侧的不可变配置。
 pub struct PluginManagerConfig {
-    /// 当前宿主 `cycms` 版本，供 Req 20.2 兼容性校验。
+    /// 当前宿主 `cycms` 版本。
     pub cycms_version: Version,
     /// 插件根目录（对应 `cycms.toml` 的 `[plugins] directory`）。
     pub plugins_root: PathBuf,
@@ -363,15 +372,12 @@ impl PluginManager {
             should_rollback_permissions = true;
         }
 
-        let manifest_value = match serde_json::to_value(manifest) {
+        let manifest_value = match self.build_manifest_value(source) {
             Ok(value) => value,
             Err(err) => {
                 self.rollback_failed_install(source, should_rollback_permissions)
                     .await?;
-                return Err(Error::Internal {
-                    message: format!("serialize manifest: {err}"),
-                    source: None,
-                });
+                return Err(err);
             }
         };
         let row = NewPluginRow {
@@ -402,6 +408,87 @@ impl PluginManager {
         Ok(records.iter().map(PluginInfo::from_record).collect())
     }
 
+    pub async fn admin_extension_bootstrap(
+        &self,
+        user_id: &str,
+        roles: &[String],
+    ) -> Result<AdminExtensionBootstrap> {
+        let records = self.repository.list().await?;
+        let enabled_states = Self::enabled_frontend_states(&records)?;
+        let state_refs: Vec<&FrontendRuntimeState> = enabled_states.iter().collect();
+        let revision = extension_revision_token(&state_refs)?;
+
+        let mut diagnostics = Vec::new();
+        let mut plugins = Vec::new();
+        for state in enabled_states {
+            if let Some(diagnostic) = Self::frontend_diagnostic(&state) {
+                diagnostics.push(diagnostic);
+            }
+            if !state.compatibility.compatible {
+                continue;
+            }
+
+            let plugin = self
+                .bootstrap_plugin_for_user(user_id, roles, &state)
+                .await?;
+            if !plugin.is_empty() {
+                plugins.push(plugin);
+            }
+        }
+
+        plugins.sort_by(|left, right| left.name.cmp(&right.name));
+
+        Ok(AdminExtensionBootstrap {
+            revision,
+            shell_sdk_version: ADMIN_SHELL_SDK_VERSION.to_owned(),
+            plugins,
+            diagnostics,
+        })
+    }
+
+    pub async fn admin_extension_diagnostics(&self) -> Result<AdminExtensionDiagnostics> {
+        let records = self.repository.list().await?;
+        let all_states = Self::frontend_states(&records)?;
+        let state_refs: Vec<&FrontendRuntimeState> =
+            all_states.iter().map(|(_, state)| state).collect();
+        let revision = extension_revision_token(&state_refs)?;
+        let diagnostics = all_states
+            .into_iter()
+            .filter_map(|(_, state)| Self::frontend_diagnostic(&state))
+            .collect();
+
+        Ok(AdminExtensionDiagnostics {
+            revision,
+            diagnostics,
+        })
+    }
+
+    pub async fn resolve_frontend_asset(
+        &self,
+        plugin_name: &str,
+        version: &str,
+        url_hash: &str,
+        asset_path: &str,
+    ) -> Result<Option<ResolvedPluginAsset>> {
+        let Some(record) = self.repository.find_by_name(plugin_name).await? else {
+            return Ok(None);
+        };
+        if record.status != PluginStatus::Enabled {
+            return Ok(None);
+        }
+        let Some(state) = frontend_runtime_state(&record.manifest)? else {
+            return Ok(None);
+        };
+
+        resolve_plugin_asset(
+            &self.plugins_root.join(plugin_name),
+            &state,
+            version,
+            url_hash,
+            asset_path,
+        )
+    }
+
     async fn activate_record(
         &self,
         record: &PluginRecord,
@@ -411,6 +498,7 @@ impl PluginManager {
     ) -> Result<()> {
         let manifest = Self::manifest_from_record(record)?;
         self.check_dependencies_enabled(&manifest).await?;
+        self.validate_frontend_enablement(record).await?;
 
         let runtime = self.runtime_for(record.kind)?;
         let already_loaded = runtime
@@ -470,6 +558,350 @@ impl PluginManager {
         self.plugins_root
             .join(plugin_name)
             .join(&manifest.plugin.entry)
+    }
+
+    fn build_manifest_value(&self, source: &DiscoveredPlugin) -> Result<serde_json::Value> {
+        let mut manifest_value =
+            serde_json::to_value(&source.manifest).map_err(|err| Error::Internal {
+                message: format!("serialize manifest: {err}"),
+                source: None,
+            })?;
+
+        if let Some(spec) = &source.manifest.frontend {
+            let frontend_manifest = load_frontend_manifest(&source.directory, spec)?;
+            let frontend_state = build_frontend_runtime_state(
+                &source.directory,
+                &source.manifest,
+                frontend_manifest,
+            )?;
+            insert_frontend_runtime_state(&mut manifest_value, &frontend_state)?;
+        }
+
+        Ok(manifest_value)
+    }
+
+    async fn validate_frontend_enablement(&self, record: &PluginRecord) -> Result<()> {
+        let Some(current_state) = frontend_runtime_state(&record.manifest)? else {
+            return Ok(());
+        };
+
+        if current_state.required && !current_state.compatibility.compatible {
+            return Err(Error::ValidationError {
+                message: current_state
+                    .compatibility
+                    .reason
+                    .clone()
+                    .unwrap_or_else(|| {
+                        format!(
+                            "plugin {} frontend is incompatible with admin shell {}",
+                            record.name, ADMIN_SHELL_SDK_VERSION
+                        )
+                    }),
+                details: None,
+            });
+        }
+
+        if !current_state.compatibility.compatible {
+            return Ok(());
+        }
+
+        let records = self.repository.list().await?;
+        let mut states = Vec::new();
+        for other in records {
+            if other.name == record.name || other.status != PluginStatus::Enabled {
+                continue;
+            }
+            if let Some(state) = frontend_runtime_state(&other.manifest)?
+                && state.compatibility.compatible
+            {
+                states.push(state);
+            }
+        }
+        states.push(current_state);
+
+        let refs: Vec<&FrontendRuntimeState> = states.iter().collect();
+        validate_cross_plugin_conflicts(&refs)
+    }
+
+    fn frontend_states(
+        records: &[PluginRecord],
+    ) -> Result<Vec<(PluginStatus, FrontendRuntimeState)>> {
+        let mut states = Vec::new();
+        for record in records {
+            if let Some(state) = frontend_runtime_state(&record.manifest)? {
+                states.push((record.status, state));
+            }
+        }
+        Ok(states)
+    }
+
+    fn enabled_frontend_states(records: &[PluginRecord]) -> Result<Vec<FrontendRuntimeState>> {
+        let mut states = Vec::new();
+        for record in records {
+            if record.status != PluginStatus::Enabled {
+                continue;
+            }
+            if let Some(state) = frontend_runtime_state(&record.manifest)? {
+                states.push(state);
+            }
+        }
+        Ok(states)
+    }
+
+    fn frontend_diagnostic(state: &FrontendRuntimeState) -> Option<ExtensionDiagnostic> {
+        if state.compatibility.compatible {
+            return None;
+        }
+
+        Some(ExtensionDiagnostic {
+            plugin_name: state.snapshot.plugin_name.clone(),
+            plugin_version: state.snapshot.plugin_version.clone(),
+            severity: if state.required {
+                "error".to_owned()
+            } else {
+                "warning".to_owned()
+            },
+            code: "shell_sdk_incompatible".to_owned(),
+            message: state.compatibility.reason.clone().unwrap_or_else(|| {
+                format!(
+                    "plugin {} frontend is incompatible with admin shell {}",
+                    state.snapshot.plugin_name, ADMIN_SHELL_SDK_VERSION
+                )
+            }),
+        })
+    }
+
+    async fn bootstrap_plugin_for_user(
+        &self,
+        user_id: &str,
+        roles: &[String],
+        state: &FrontendRuntimeState,
+    ) -> Result<BootstrapPlugin> {
+        let plugin_name = state.snapshot.plugin_name.as_str();
+        let plugin_version = state.snapshot.plugin_version.as_str();
+
+        let mut menus = Vec::new();
+        for menu in &state.snapshot.menus {
+            if !self
+                .has_all_permissions(user_id, roles, &menu.required_permissions)
+                .await?
+            {
+                continue;
+            }
+            menus.push(BootstrapMenuContribution {
+                id: menu.id.clone(),
+                label: menu.label.clone(),
+                zone: menu.zone.clone(),
+                icon: menu.icon.clone(),
+                order: menu.order,
+                to: menu.to.clone(),
+                full_path: plugin_admin_full_path(plugin_name, &menu.to),
+                required_permissions: menu.required_permissions.clone(),
+            });
+        }
+        menus.sort_by(|left, right| {
+            left.zone
+                .cmp(&right.zone)
+                .then(left.order.cmp(&right.order))
+                .then(left.label.cmp(&right.label))
+                .then(left.id.cmp(&right.id))
+        });
+
+        let mut routes = Vec::new();
+        for route in &state.snapshot.routes {
+            if !self
+                .has_all_permissions(user_id, roles, &route.required_permissions)
+                .await?
+            {
+                continue;
+            }
+            let (module_url, styles) = Self::asset_urls_for(state, &route.module_asset_id)?;
+            routes.push(BootstrapRouteContribution {
+                id: route.id.clone(),
+                path: route.path.clone(),
+                full_path: plugin_admin_full_path(plugin_name, &route.path),
+                module_url,
+                styles,
+                kind: route.kind.clone(),
+                title: route.title.clone(),
+                required_permissions: route.required_permissions.clone(),
+                r#match: route.r#match.clone(),
+            });
+        }
+        routes.sort_by(|left, right| left.path.cmp(&right.path).then(left.id.cmp(&right.id)));
+
+        let mut slots = Vec::new();
+        for slot in &state.snapshot.slots {
+            if !self
+                .has_all_permissions(user_id, roles, &slot.required_permissions)
+                .await?
+            {
+                continue;
+            }
+            let (module_url, styles) = Self::asset_urls_for(state, &slot.module_asset_id)?;
+            slots.push(BootstrapSlotContribution {
+                id: slot.id.clone(),
+                slot: slot.slot.clone(),
+                order: slot.order,
+                module_url,
+                styles,
+                required_permissions: slot.required_permissions.clone(),
+                r#match: slot.r#match.clone(),
+            });
+        }
+        slots.sort_by(|left, right| {
+            left.slot
+                .cmp(&right.slot)
+                .then(left.order.cmp(&right.order))
+                .then(left.id.cmp(&right.id))
+        });
+
+        let mut field_renderers = Vec::new();
+        for renderer in &state.snapshot.field_renderers {
+            if !self
+                .has_all_permissions(user_id, roles, &renderer.required_permissions)
+                .await?
+            {
+                continue;
+            }
+            let (module_url, styles) = Self::asset_urls_for(state, &renderer.module_asset_id)?;
+            field_renderers.push(BootstrapFieldRendererContribution {
+                id: renderer.id.clone(),
+                type_name: renderer.type_name.clone(),
+                module_url,
+                styles,
+                required_permissions: renderer.required_permissions.clone(),
+            });
+        }
+        field_renderers.sort_by(|left, right| {
+            left.type_name
+                .cmp(&right.type_name)
+                .then(left.id.cmp(&right.id))
+        });
+
+        let settings = if let Some(settings) = &state.snapshot.settings {
+            if self
+                .has_all_permissions(user_id, roles, &settings.required_permissions)
+                .await?
+            {
+                let custom_page = if let Some(page) = &settings.custom_page {
+                    let (module_url, styles) = Self::asset_urls_for(state, &page.module_asset_id)?;
+                    Some(BootstrapSettingsPage {
+                        path: page.path.clone(),
+                        full_path: plugin_admin_full_path(plugin_name, &page.path),
+                        module_url,
+                        styles,
+                    })
+                } else {
+                    None
+                };
+                Some(BootstrapSettingsContribution {
+                    namespace: settings.namespace.clone(),
+                    required_permissions: settings.required_permissions.clone(),
+                    custom_page,
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(BootstrapPlugin {
+            name: plugin_name.to_owned(),
+            version: plugin_version.to_owned(),
+            menus,
+            routes,
+            slots,
+            field_renderers,
+            settings,
+        })
+    }
+
+    async fn has_all_permissions(
+        &self,
+        user_id: &str,
+        roles: &[String],
+        codes: &[String],
+    ) -> Result<bool> {
+        for code in codes {
+            if !self
+                .permission_engine
+                .check_permission(user_id, roles, code, None)
+                .await?
+            {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    fn asset_urls_for(
+        state: &FrontendRuntimeState,
+        asset_id: &str,
+    ) -> Result<(String, Vec<String>)> {
+        let asset = state
+            .snapshot
+            .assets
+            .iter()
+            .find(|asset| asset.id == asset_id)
+            .ok_or_else(|| Error::Internal {
+                message: format!(
+                    "plugin {} frontend snapshot references missing asset {}",
+                    state.snapshot.plugin_name, asset_id
+                ),
+                source: None,
+            })?;
+
+        let module_file = Self::file_for_path(state, &asset.module_path)?;
+        let mut styles = Vec::with_capacity(asset.style_paths.len());
+        for style_path in &asset.style_paths {
+            let style_file = Self::file_for_path(state, style_path)?;
+            styles.push(Self::asset_url(
+                &state.snapshot.plugin_name,
+                &state.snapshot.plugin_version,
+                style_file,
+            ));
+        }
+
+        Ok((
+            Self::asset_url(
+                &state.snapshot.plugin_name,
+                &state.snapshot.plugin_version,
+                module_file,
+            ),
+            styles,
+        ))
+    }
+
+    fn file_for_path<'a>(
+        state: &'a FrontendRuntimeState,
+        path: &str,
+    ) -> Result<&'a crate::frontend_snapshot::NormalizedFrontendFile> {
+        state
+            .snapshot
+            .files
+            .iter()
+            .find(|file| file.path == path)
+            .ok_or_else(|| Error::Internal {
+                message: format!(
+                    "plugin {} frontend snapshot references missing file {}",
+                    state.snapshot.plugin_name, path
+                ),
+                source: None,
+            })
+    }
+
+    fn asset_url(
+        plugin_name: &str,
+        version: &str,
+        file: &crate::frontend_snapshot::NormalizedFrontendFile,
+    ) -> String {
+        format!(
+            "/api/v1/plugin-assets/{plugin_name}/{version}/{}/{path}",
+            file.url_hash,
+            path = file.path
+        )
     }
 
     async fn check_dependencies_installed(&self, manifest: &PluginManifest) -> Result<()> {

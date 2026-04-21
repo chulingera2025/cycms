@@ -236,8 +236,7 @@ impl PluginRuntime for NativePluginRuntime {
             let mut loaded = self.loaded.write().unwrap_or_else(PoisonError::into_inner);
             loaded.remove(plugin_name)
         };
-        let Some(mut loaded_plugin) = entry
-        else {
+        let Some(mut loaded_plugin) = entry else {
             return Ok(());
         };
 

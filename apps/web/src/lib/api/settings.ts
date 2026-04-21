@@ -1,9 +1,13 @@
 import { api } from './client';
-import type { SettingsEntry } from '@/types';
+import type { PluginSchema, SettingsEntry } from '@/types';
 
 const BASE = '/api/v1/settings';
 
 export const settingsApi = {
+  listSchemas(): Promise<PluginSchema[]> {
+    return api.get<PluginSchema[]>(`${BASE}/schemas`);
+  },
+
   get(namespace: string): Promise<SettingsEntry[]> {
     return api.get<SettingsEntry[]>(`${BASE}/${namespace}`);
   },

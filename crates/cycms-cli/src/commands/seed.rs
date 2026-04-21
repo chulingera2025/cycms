@@ -1,5 +1,5 @@
-use rand::distributions::Alphanumeric;
 use rand::Rng;
+use rand::distributions::Alphanumeric;
 use std::sync::Arc;
 
 use cycms_auth::{AuthEngine, CreateUserInput};

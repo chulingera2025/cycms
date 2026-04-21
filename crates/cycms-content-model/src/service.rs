@@ -1,6 +1,6 @@
 //! `ContentModelRegistry` 门面：内容类型 CRUD + 字段校验 + Schema 输出编排。
 //!
-//! 功能边界（Req 3.1 / 3.2 / 3.3 / 3.4 / 3.5 / 3.6）：
+//! 功能边界：
 //! - `create_type`：字段定义 + `api_id` 校验 → 重复检测 → 持久化。
 //! - `update_type`：字段级 diff 日志 + 既有 entries 与新 schema 的兼容性检查。
 //! - `delete_type`：删除前检查实例占用与其他 Content Type 的 relation 反向引用。
@@ -56,7 +56,7 @@ impl ContentModelRegistry {
         &self.field_types
     }
 
-    /// 创建 Content Type（Req 3.1）。
+    /// 创建 Content Type。
     ///
     /// # Errors
     /// - 输入字段非法 → [`ContentModelError::InvalidField`] / [`ContentModelError::InputValidation`]
@@ -75,7 +75,7 @@ impl ContentModelRegistry {
         self.repo.insert(row).await
     }
 
-    /// 按 `api_id` 更新 Content Type（Req 3.3）。
+    /// 按 `api_id` 更新 Content Type。
     ///
     /// 字段级 diff（添加 / 删除 / 改类型）会记录 `warn!` 日志；若该 Content Type
     /// 已存在实例，则新 schema 还必须与现有 entries 兼容，否则直接拒绝更新。
@@ -177,7 +177,7 @@ impl ContentModelRegistry {
         self.repo.find_by_id(id).await
     }
 
-    /// 注册插件字段类型 / 校验器处理器（Req 3.6）。
+    /// 注册插件字段类型 / 校验器处理器。
     pub fn register_field_type(&self, key: &str, handler: Arc<dyn FieldTypeHandler>) {
         self.field_types.register(key, handler);
     }
@@ -187,7 +187,7 @@ impl ContentModelRegistry {
         self.field_types.unregister_by_prefix(prefix)
     }
 
-    /// 对给定 `api_id` 的 Content Type 执行 entry 级校验（Req 3.2）。
+    /// 对给定 `api_id` 的 Content Type 执行 entry 级校验。
     ///
     /// # Errors
     /// - `api_id` 不存在 → [`ContentModelError::NotFound`]
@@ -198,7 +198,7 @@ impl ContentModelRegistry {
         validate_fields(&ct.fields, entry, &self.field_types).map_err(Into::into)
     }
 
-    /// 为 `api_id` 指定的 Content Type 生成 JSON Schema / `OpenAPI` 片段（Req 3.5）。
+    /// 为 `api_id` 指定的 Content Type 生成 JSON Schema / `OpenAPI` 片段。
     ///
     /// # Errors
     /// - `api_id` 不存在 → [`ContentModelError::NotFound`]
@@ -252,8 +252,14 @@ impl ContentModelRegistry {
             return Ok(());
         }
 
-        let old_ids: HashSet<&str> = old_fields.iter().map(|field| field.api_id.as_str()).collect();
-        let new_ids: HashSet<&str> = new_fields.iter().map(|field| field.api_id.as_str()).collect();
+        let old_ids: HashSet<&str> = old_fields
+            .iter()
+            .map(|field| field.api_id.as_str())
+            .collect();
+        let new_ids: HashSet<&str> = new_fields
+            .iter()
+            .map(|field| field.api_id.as_str())
+            .collect();
         let removed_fields: BTreeSet<&str> = old_ids.difference(&new_ids).copied().collect();
         let mut reasons = Vec::new();
 

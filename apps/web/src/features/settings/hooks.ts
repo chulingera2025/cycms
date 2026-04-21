@@ -2,6 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { settingsApi } from '@/lib/api';
 import { qk } from '@/lib/query-keys';
 
+export function useSettingSchemas() {
+  return useQuery({
+    queryKey: qk.settings.schemas,
+    queryFn: () => settingsApi.listSchemas(),
+  });
+}
+
 export function useSettings(namespace: string) {
   return useQuery({
     queryKey: qk.settings.ns(namespace),

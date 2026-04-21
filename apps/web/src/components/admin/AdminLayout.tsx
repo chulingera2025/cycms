@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
+  Alert,
   Avatar,
   Breadcrumb,
   Button,
@@ -27,6 +28,10 @@ import {
   Users,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import {
+  AdminExtensionRegistryProvider,
+  useAdminExtensions,
+} from '@/features/admin-extensions';
 import { useAuth } from '@/stores/auth';
 import { ThemeSwitcher } from '@/components/shared/ThemeSwitcher';
 
@@ -34,12 +39,43 @@ const { Sider, Header, Content } = Layout;
 
 interface NavEntry {
   key: string;
-  labelKey: string;
+  label: string;
   icon: React.ReactNode;
+  zone: string;
+  order: number;
 }
 
-export default function AdminLayout() {
+const ZONE_ORDER: Record<string, number> = {
+  content: 10,
+  plugins: 20,
+  system: 30,
+  settings: 40,
+};
+
+function resolvePluginIcon(icon?: string) {
+  switch (icon) {
+    case 'database':
+      return <Database size={16} />;
+    case 'media':
+    case 'image':
+      return <ImageIcon size={16} />;
+    case 'shield':
+      return <Shield size={16} />;
+    case 'settings':
+      return <Settings size={16} />;
+    case 'users':
+      return <Users size={16} />;
+    case 'file-text':
+    case 'book-open':
+      return <FileText size={16} />;
+    default:
+      return <Puzzle size={16} />;
+  }
+}
+
+function AdminLayoutContent() {
   const { user, logout } = useAuth();
+  const { degraded, error, findRoute, findSettingsPage, menuItems: pluginMenus } = useAdminExtensions();
   const location = useLocation();
   const navigate = useNavigate();
   const { t } = useTranslation(['admin', 'common']);
@@ -48,29 +84,70 @@ export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const navEntries = useMemo<NavEntry[]>(
+  const coreNavEntries = useMemo<NavEntry[]>(
     () => [
-      { key: '/admin/dashboard', labelKey: 'nav.dashboard', icon: <LayoutDashboard size={16} /> },
-      { key: '/admin/content-types', labelKey: 'nav.contentTypes', icon: <Database size={16} /> },
-      { key: '/admin/content', labelKey: 'nav.content', icon: <FileText size={16} /> },
-      { key: '/admin/media', labelKey: 'nav.media', icon: <ImageIcon size={16} /> },
-      { key: '/admin/plugins', labelKey: 'nav.plugins', icon: <Puzzle size={16} /> },
-      { key: '/admin/users', labelKey: 'nav.users', icon: <Users size={16} /> },
-      { key: '/admin/roles', labelKey: 'nav.roles', icon: <Shield size={16} /> },
-      { key: '/admin/settings', labelKey: 'nav.settings', icon: <Settings size={16} /> },
+      { key: '/admin/dashboard', label: t('nav.dashboard'), icon: <LayoutDashboard size={16} />, zone: 'content', order: 0 },
+      { key: '/admin/content-types', label: t('nav.contentTypes'), icon: <Database size={16} />, zone: 'content', order: 10 },
+      { key: '/admin/content', label: t('nav.content'), icon: <FileText size={16} />, zone: 'content', order: 20 },
+      { key: '/admin/media', label: t('nav.media'), icon: <ImageIcon size={16} />, zone: 'content', order: 30 },
+      { key: '/admin/plugins', label: t('nav.plugins'), icon: <Puzzle size={16} />, zone: 'plugins', order: 0 },
+      { key: '/admin/users', label: t('nav.users'), icon: <Users size={16} />, zone: 'system', order: 0 },
+      { key: '/admin/roles', label: t('nav.roles'), icon: <Shield size={16} />, zone: 'system', order: 10 },
+      { key: '/admin/settings', label: t('nav.settings'), icon: <Settings size={16} />, zone: 'settings', order: 0 },
     ],
-    [],
+    [t],
+  );
+
+  const navEntries = useMemo<NavEntry[]>(
+    () =>
+      [...coreNavEntries, ...pluginMenus.map((menu) => ({
+        key: menu.fullPath,
+        label: menu.label,
+        icon: resolvePluginIcon(menu.icon),
+        zone: menu.zone,
+        order: menu.order,
+      }))].sort((left, right) => {
+        const zoneCompare = (ZONE_ORDER[left.zone] ?? 100) - (ZONE_ORDER[right.zone] ?? 100);
+        if (zoneCompare !== 0) {
+          return zoneCompare;
+        }
+        if (left.order !== right.order) {
+          return left.order - right.order;
+        }
+        return left.label.localeCompare(right.label, 'zh-CN');
+      }),
+    [coreNavEntries, pluginMenus],
   );
 
   const menuItems: MenuProps['items'] = navEntries.map((n) => ({
     key: n.key,
     icon: n.icon,
-    label: t(n.labelKey),
+    label: n.label,
   }));
 
-  const selectedKey =
-    navEntries.find((n) => location.pathname.startsWith(n.key))?.key ?? '/admin/dashboard';
-  const currentLabelKey = navEntries.find((n) => n.key === selectedKey)?.labelKey;
+  const selectedEntry = navEntries.find((entry) => {
+    if (entry.key === '/admin/dashboard') {
+      return location.pathname === entry.key;
+    }
+    return location.pathname === entry.key || location.pathname.startsWith(`${entry.key}/`);
+  });
+
+  const namespaceLabel = useMemo(() => {
+    if (!location.pathname.startsWith('/admin/x/')) {
+      return null;
+    }
+    const segments = location.pathname.replace('/admin/x/', '').split('/');
+    const pluginName = segments[0] ?? '';
+    const tail = segments.length > 1 ? `/${segments.slice(1).join('/')}` : '/';
+    const route = findRoute(pluginName, tail);
+    if (route) {
+      return route.title;
+    }
+    const settingsPage = findSettingsPage(pluginName, tail);
+    return settingsPage ? `${pluginName} 设置` : null;
+  }, [findRoute, findSettingsPage, location.pathname]);
+
+  const currentLabel = selectedEntry?.label ?? namespaceLabel ?? (location.pathname === '/admin' ? t('nav.dashboard') : '');
 
   function handleMenuClick(key: string) {
     navigate(key);
@@ -113,7 +190,7 @@ export default function AdminLayout() {
       <Menu
         theme="dark"
         mode="inline"
-        selectedKeys={[selectedKey]}
+        selectedKeys={selectedEntry ? [selectedEntry.key] : []}
         items={menuItems}
         onClick={({ key }) => handleMenuClick(key as string)}
         style={{ borderInlineEnd: 0 }}
@@ -169,7 +246,7 @@ export default function AdminLayout() {
             <Breadcrumb
               items={[
                 { title: t('app.name', { ns: 'common' }) },
-                { title: currentLabelKey ? t(currentLabelKey) : '' },
+                { title: currentLabel },
               ]}
             />
           </div>
@@ -187,9 +264,27 @@ export default function AdminLayout() {
           </div>
         </Header>
         <Content>
+          {degraded && (
+            <div className="p-4 pb-0">
+              <Alert
+                type="warning"
+                showIcon
+                message="插件扩展注册表加载失败，后台已切换到降级模式"
+                description={error?.message ?? '核心后台页面仍可继续使用，插件菜单和命名空间路由将回退到最近一次成功加载的注册表。'}
+              />
+            </div>
+          )}
           <Outlet />
         </Content>
       </Layout>
     </Layout>
+  );
+}
+
+export default function AdminLayout() {
+  return (
+    <AdminExtensionRegistryProvider>
+      <AdminLayoutContent />
+    </AdminExtensionRegistryProvider>
   );
 }

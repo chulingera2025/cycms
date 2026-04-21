@@ -11,7 +11,7 @@ use semver::{Version, VersionReq};
 use crate::error::PluginManagerError;
 use crate::manifest::PluginManifest;
 
-/// 校验 manifest 的 `compatibility.cycms` 是否允许当前宿主版本加载（Req 20.2）。
+/// 校验 manifest 的 `compatibility.cycms` 是否允许当前宿主版本加载。
 ///
 /// # Errors
 /// 版本范围不匹配时返回 [`PluginManagerError::IncompatibleHost`]。

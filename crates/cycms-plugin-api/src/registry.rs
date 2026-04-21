@@ -6,7 +6,7 @@ use tracing::warn;
 
 use crate::error::RegistryError;
 
-/// 服务分隔符，对应 Req 13.1 的 `{plugin_name}.{service_name}` 键格式。
+/// 服务分隔符，对应 `{plugin_name}.{service_name}` 键格式。
 const KEY_SEPARATOR: char = '.';
 
 /// 进程内服务注册表 / 发现门面。
@@ -29,7 +29,7 @@ impl ServiceRegistry {
         Self::default()
     }
 
-    /// 注册服务实例（Req 13.1）。
+    /// 注册服务实例。
     ///
     /// - 键必须形如 `{plugin_name}.{service_name}`，两段均非空。
     /// - 允许覆盖已有同名 key，重复注册记录 warning；新实例生效、availability 重置为 `true`。
@@ -77,7 +77,7 @@ impl ServiceRegistry {
         Ok(())
     }
 
-    /// 按 key 查询类型化服务（Req 13.2 / 13.3）。
+    /// 按 key 查询类型化服务。
     ///
     /// # Errors
     /// - [`RegistryError::ServiceNotFound`]：key 未注册。

@@ -502,5 +502,8 @@ async fn delete_detects_nested_json_references() {
     .unwrap();
 
     let err = s.manager.delete(&asset.id).await.unwrap_err();
-    assert!(matches!(err, cycms_media::MediaError::ReferencedAsset(_, 1)));
+    assert!(matches!(
+        err,
+        cycms_media::MediaError::ReferencedAsset(_, 1)
+    ));
 }

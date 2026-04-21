@@ -7,9 +7,9 @@
 //! - re-enable：确认 runtime 状态可二次复用
 
 use std::any::Any;
-use std::process::Command;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
@@ -449,11 +449,18 @@ async fn enable_loads_dynamic_library_when_plugin_not_pre_registered() {
     harness.manager.install(&discovered[0]).await.unwrap();
     harness.manager.enable("dynamic-echo").await.unwrap();
 
-    assert_eq!(harness.runtime.loaded_plugins(), vec!["dynamic-echo".to_owned()]);
+    assert_eq!(
+        harness.runtime.loaded_plugins(),
+        vec!["dynamic-echo".to_owned()]
+    );
     assert!(harness.runtime.routes_of("dynamic-echo").is_none());
     assert_eq!(fs::read_to_string(&marker_path).unwrap(), "enabled");
 
-    harness.manager.disable("dynamic-echo", false).await.unwrap();
+    harness
+        .manager
+        .disable("dynamic-echo", false)
+        .await
+        .unwrap();
     assert_eq!(fs::read_to_string(&marker_path).unwrap(), "disabled");
     fs::remove_file(&marker_path).unwrap();
 }

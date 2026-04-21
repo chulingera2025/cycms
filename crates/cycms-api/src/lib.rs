@@ -23,6 +23,10 @@ pub fn build_router(state: Arc<ApiState>) -> Router {
         .merge(handlers::auth::protected_routes().route_layer(auth_layer.clone()));
 
     let protected_v1 = Router::new()
+        .nest(
+            "/admin/extensions",
+            handlers::admin_extensions::protected_routes(),
+        )
         .nest("/content-types", handlers::content_types::routes())
         .nest("/content", handlers::content::routes())
         .nest("/media", handlers::media::routes())
@@ -35,6 +39,10 @@ pub fn build_router(state: Arc<ApiState>) -> Router {
     let mut api: Router<Arc<ApiState>> = Router::new()
         .route("/docs", get(openapi_docs))
         .nest("/v1/auth", auth_router)
+        .nest(
+            "/v1/plugin-assets",
+            handlers::admin_extensions::public_routes(),
+        )
         .nest("/v1/public", handlers::public::routes())
         .nest("/v1", protected_v1);
 
