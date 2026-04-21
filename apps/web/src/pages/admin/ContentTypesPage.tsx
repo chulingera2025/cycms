@@ -3,15 +3,16 @@ import { Button, Popconfirm, Space, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Plus } from 'lucide-react';
 import { ContentTypeForm } from '@/features/content-types/ContentTypeForm';
+import { formValueToFieldDefinition } from '@/features/content-types/fieldType';
 import {
   useContentTypes,
   useCreateContentType,
   useDeleteContentType,
   useUpdateContentType,
 } from '@/features/content-types/hooks';
-import type { ContentTypeCreateInput } from '@/features/content-types/schema';
+import type { ContentTypeFormValues } from '@/features/content-types/schema';
 import { toast } from '@/lib/toast';
-import type { ContentTypeDefinition, FieldDefinition } from '@/types';
+import type { ContentTypeDefinition } from '@/types';
 
 export default function ContentTypesPage() {
   const { data: types = [], isLoading } = useContentTypes();
@@ -31,14 +32,16 @@ export default function ContentTypesPage() {
     setOpen(true);
   }
 
-  async function handleSubmit(values: ContentTypeCreateInput) {
+  async function handleSubmit(values: ContentTypeFormValues) {
+    const fields = values.fields.map((field, index) => formValueToFieldDefinition(field, index));
+
     if (editing) {
       await update.mutateAsync({
         apiId: editing.api_id,
         input: {
           name: values.name,
           description: values.description,
-          fields: values.fields as FieldDefinition[],
+          fields,
         },
       });
       toast.success(`已更新 ${values.name}`);
@@ -48,7 +51,7 @@ export default function ContentTypesPage() {
         api_id: values.api_id,
         description: values.description,
         kind: values.kind,
-        fields: values.fields as FieldDefinition[],
+        fields,
       });
       toast.success(`已创建 ${values.name}`);
     }

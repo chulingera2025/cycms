@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Drawer, Form, Input, Space } from 'antd';
 import { FieldRenderer } from './FieldRenderer';
+import { getFieldTypeKind, getFieldTypeLabel } from '@/features/content-types/fieldType';
 import { ApiError } from '@/lib/api/client';
 import type { ContentEntry, ContentTypeDefinition } from '@/types';
 
@@ -56,7 +57,7 @@ export function EntryEditor({
     const parsed: Record<string, unknown> = {};
     for (const f of contentType.fields) {
       const v = fields[f.api_id];
-      if (f.field_type === 'json' && typeof v === 'string' && v !== '') {
+      if (getFieldTypeKind(f.field_type) === 'json' && typeof v === 'string' && v !== '') {
         try {
           parsed[f.api_id] = JSON.parse(v);
         } catch {
@@ -114,7 +115,7 @@ export function EntryEditor({
                 {fd.name}
                 {fd.required && <span className="ml-1 text-danger">*</span>}
                 <span className="ml-2 font-mono text-xs text-text-muted">
-                  {fd.field_type}
+                  {getFieldTypeLabel(fd.field_type)}
                 </span>
               </span>
             }

@@ -3,6 +3,11 @@ import { Button, DatePicker, Input, InputNumber, Skeleton, Space, Switch } from 
 import dayjs from 'dayjs';
 import { Image as ImageIcon, Link2, X } from 'lucide-react';
 import { MediaPicker } from '@/features/media/MediaPicker';
+import {
+  getFieldTypeKind,
+  getRelationConfig,
+  isMultiRelationField,
+} from '@/features/content-types/fieldType';
 import { useMedia } from '@/features/media/hooks';
 import { resolveMediaUrl, formatBytes } from '@/utils/format';
 import type { FieldDefinition } from '@/types';
@@ -75,24 +80,17 @@ function MediaField({ value, onChange }: { value: unknown; onChange: (v: unknown
 }
 
 export function FieldRenderer({ field, value, onChange }: Props) {
-  switch (field.field_type) {
+  const fieldTypeKind = getFieldTypeKind(field.field_type);
+
+  switch (fieldTypeKind) {
     case 'boolean':
       return <Switch checked={Boolean(value)} onChange={onChange} />;
 
-    case 'integer':
+    case 'number':
       return (
         <InputNumber
           style={{ width: '100%' }}
-          precision={0}
-          value={typeof value === 'number' ? value : undefined}
-          onChange={(v) => onChange(v ?? null)}
-        />
-      );
-
-    case 'float':
-      return (
-        <InputNumber
-          style={{ width: '100%' }}
+          precision={field.field_type.kind === 'number' && !field.field_type.decimal ? 0 : undefined}
           value={typeof value === 'number' ? value : undefined}
           onChange={(v) => onChange(v ?? null)}
         />
@@ -100,10 +98,9 @@ export function FieldRenderer({ field, value, onChange }: Props) {
 
     case 'text':
       return (
-        <Input.TextArea
+        <Input
           value={typeof value === 'string' ? value : ''}
           onChange={(e) => onChange(e.target.value)}
-          autoSize={{ minRows: 3, maxRows: 10 }}
         />
       );
 
@@ -147,8 +144,8 @@ export function FieldRenderer({ field, value, onChange }: Props) {
       return <MediaField value={value} onChange={onChange} />;
 
     case 'relation': {
-      const multiple =
-        field.relation_kind === 'one_to_many' || field.relation_kind === 'many_to_many';
+      const multiple = isMultiRelationField(field.field_type);
+      const relation = getRelationConfig(field.field_type);
       const normalized = multiple
         ? Array.isArray(value)
           ? (value as string[])
@@ -158,7 +155,7 @@ export function FieldRenderer({ field, value, onChange }: Props) {
         : typeof value === 'string'
           ? value
           : null;
-      if (!field.relation_target) {
+      if (!relation.targetType) {
         return (
           <Space>
             <Link2 size={14} className="text-text-muted" />
@@ -168,7 +165,7 @@ export function FieldRenderer({ field, value, onChange }: Props) {
       }
       return (
         <RelationSelect
-          target={field.relation_target}
+          target={relation.targetType}
           multiple={multiple}
           value={normalized}
           onChange={onChange}

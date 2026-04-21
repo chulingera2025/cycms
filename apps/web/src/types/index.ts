@@ -30,22 +30,40 @@ export interface User {
 
 // ── Content Types ────────────────────────────────────────────────────────
 
-export type FieldType =
-  | 'string'
+export type FieldTypeKind =
   | 'text'
   | 'richtext'
-  | 'integer'
-  | 'float'
+  | 'number'
   | 'boolean'
   | 'datetime'
   | 'json'
   | 'media'
-  | 'relation';
+  | 'relation'
+  | 'custom';
+
+export type RelationKind = 'one_to_one' | 'one_to_many' | 'many_to_many';
+
+export type FieldType =
+  | { kind: 'text' }
+  | { kind: 'richtext' }
+  | { kind: 'number'; decimal?: boolean }
+  | { kind: 'boolean' }
+  | { kind: 'datetime' }
+  | { kind: 'json' }
+  | { kind: 'media'; allowed_types?: string[] }
+  | {
+      kind: 'relation';
+      target_type: string;
+      relation_kind: RelationKind;
+    }
+  | { kind: 'custom'; type_name: string };
 
 export interface ValidationRule {
   rule: string;
   value?: unknown;
-  message?: string;
+  pattern?: string;
+  values?: unknown[];
+  validator?: string;
 }
 
 export interface FieldDefinition {
@@ -54,12 +72,10 @@ export interface FieldDefinition {
   field_type: FieldType;
   required: boolean;
   unique: boolean;
-  localized: boolean;
   default_value?: unknown;
   description?: string;
-  validation_rules: ValidationRule[];
-  relation_target?: string;
-  relation_kind?: 'one_to_one' | 'one_to_many' | 'many_to_one' | 'many_to_many';
+  validations: ValidationRule[];
+  position: number;
 }
 
 export interface ContentTypeDefinition {

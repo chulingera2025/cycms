@@ -11,17 +11,21 @@ import {
   type Resolver,
 } from 'react-hook-form';
 import { Plus, Trash2 } from 'lucide-react';
+import {
+  fieldDefinitionToFormValue,
+} from './fieldType';
 import { useContentTypes } from './hooks';
 import {
   contentTypeCreateSchema,
   contentTypeUpdateSchema,
-  type ContentTypeCreateInput,
+  type ContentTypeFormValues,
+  type FieldTypeOption,
 } from './schema';
-import type { ContentTypeDefinition, FieldType } from '@/types';
+import type { ContentTypeDefinition } from '@/types';
 
-const FIELD_TYPES: { value: FieldType; label: string }[] = [
-  { value: 'string', label: '短文本' },
-  { value: 'text', label: '长文本' },
+const FIELD_TYPES: { value: FieldTypeOption; label: string }[] = [
+  { value: 'string', label: '单行文本' },
+  { value: 'text', label: '文本' },
   { value: 'richtext', label: '富文本' },
   { value: 'integer', label: '整数' },
   { value: 'float', label: '浮点数' },
@@ -30,16 +34,16 @@ const FIELD_TYPES: { value: FieldType; label: string }[] = [
   { value: 'json', label: 'JSON' },
   { value: 'media', label: '媒体' },
   { value: 'relation', label: '关联' },
+  { value: 'custom', label: '自定义' },
 ];
 
 const RELATION_KINDS = [
   { value: 'one_to_one', label: '一对一' },
   { value: 'one_to_many', label: '一对多' },
-  { value: 'many_to_one', label: '多对一' },
   { value: 'many_to_many', label: '多对多' },
 ];
 
-type FormValues = ContentTypeCreateInput;
+type FormValues = ContentTypeFormValues;
 
 interface Props {
   open: boolean;
@@ -82,7 +86,7 @@ export function ContentTypeForm({ open, initial, onClose, onSubmit, loading }: P
         api_id: initial?.api_id ?? '',
         description: initial?.description ?? '',
         kind: initial?.kind ?? 'collection',
-        fields: initial?.fields ?? [],
+        fields: initial?.fields.map(fieldDefinitionToFormValue) ?? [],
       });
     }
   }, [open, initial, reset]);
@@ -94,8 +98,24 @@ export function ContentTypeForm({ open, initial, onClose, onSubmit, loading }: P
       field_type: 'string',
       required: false,
       unique: false,
-      localized: false,
-      validation_rules: [],
+      relation_target: undefined,
+      relation_kind: undefined,
+      custom_type_name: undefined,
+      default_value: undefined,
+    });
+  }
+
+  async function handleFormSubmit(values: FormValues) {
+    await onSubmit({
+      ...values,
+      description: values.description?.trim() || undefined,
+      fields: values.fields.map((field) => ({
+        ...field,
+        relation_target: field.field_type === 'relation' ? field.relation_target : undefined,
+        relation_kind: field.field_type === 'relation' ? field.relation_kind : undefined,
+        custom_type_name:
+          field.field_type === 'custom' ? field.custom_type_name?.trim() : undefined,
+      })),
     });
   }
 
@@ -109,7 +129,7 @@ export function ContentTypeForm({ open, initial, onClose, onSubmit, loading }: P
       extra={
         <Space>
           <Button onClick={onClose}>取消</Button>
-          <Button type="primary" loading={loading} onClick={handleSubmit(onSubmit)}>
+          <Button type="primary" loading={loading} onClick={handleSubmit(handleFormSubmit)}>
             保存
           </Button>
         </Space>
@@ -216,7 +236,10 @@ interface RowProps {
 }
 
 function FieldRow({ index, control, errors, allTypes, onRemove }: RowProps) {
-  const fieldType = useWatch({ control, name: `fields.${index}.field_type` });
+  const fieldType = useWatch({
+    control,
+    name: `fields.${index}.field_type`,
+  }) as FieldTypeOption | undefined;
   const fieldErrors = errors.fields?.[index];
 
   return (
@@ -294,7 +317,12 @@ function FieldRow({ index, control, errors, allTypes, onRemove }: RowProps) {
             name={`fields.${index}.relation_target`}
             control={control}
             render={({ field }) => (
-              <Form.Item label="目标类型" className="!mb-1">
+              <Form.Item
+                label="目标类型"
+                className="!mb-1"
+                validateStatus={fieldErrors?.relation_target ? 'error' : undefined}
+                help={fieldErrors?.relation_target?.message}
+              >
                 <Select
                   value={field.value}
                   onChange={field.onChange}
@@ -314,7 +342,12 @@ function FieldRow({ index, control, errors, allTypes, onRemove }: RowProps) {
             name={`fields.${index}.relation_kind`}
             control={control}
             render={({ field }) => (
-              <Form.Item label="关系" className="!mb-1">
+              <Form.Item
+                label="关系"
+                className="!mb-1"
+                validateStatus={fieldErrors?.relation_kind ? 'error' : undefined}
+                help={fieldErrors?.relation_kind?.message}
+              >
                 <Select
                   value={field.value}
                   onChange={field.onChange}
@@ -326,6 +359,26 @@ function FieldRow({ index, control, errors, allTypes, onRemove }: RowProps) {
             )}
           />
         </div>
+      )}
+      {fieldType === 'custom' && (
+        <Controller
+          name={`fields.${index}.custom_type_name`}
+          control={control}
+          render={({ field }) => (
+            <Form.Item
+              label="类型名"
+              className="!mb-1 mt-2"
+              validateStatus={fieldErrors?.custom_type_name ? 'error' : undefined}
+              help={fieldErrors?.custom_type_name?.message}
+            >
+              <Input
+                {...field}
+                size="small"
+                placeholder="plugin.namespace.field"
+              />
+            </Form.Item>
+          )}
+        />
       )}
     </div>
   );

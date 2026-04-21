@@ -11,9 +11,10 @@ export const fieldTypeEnum = z.enum([
   'json',
   'media',
   'relation',
+  'custom',
 ]);
 
-export const fieldDefinitionSchema = z.object({
+const baseFieldDefinitionSchema = z.object({
   name: z.string().min(1, '请输入字段名称'),
   api_id: z
     .string()
@@ -21,14 +22,37 @@ export const fieldDefinitionSchema = z.object({
   field_type: fieldTypeEnum,
   required: z.boolean(),
   unique: z.boolean(),
-  localized: z.boolean(),
-  description: z.string().optional(),
   relation_target: z.string().optional(),
-  relation_kind: z
-    .enum(['one_to_one', 'one_to_many', 'many_to_one', 'many_to_many'])
-    .optional(),
+  relation_kind: z.enum(['one_to_one', 'one_to_many', 'many_to_many']).optional(),
+  custom_type_name: z.string().optional(),
   default_value: z.unknown().optional(),
-  validation_rules: z.array(z.unknown()),
+});
+
+export const fieldDefinitionSchema = baseFieldDefinitionSchema.superRefine((field, ctx) => {
+  if (field.field_type === 'relation') {
+    if (!field.relation_target) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['relation_target'],
+        message: '请选择目标类型',
+      });
+    }
+    if (!field.relation_kind) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['relation_kind'],
+        message: '请选择关系类型',
+      });
+    }
+  }
+
+  if (field.field_type === 'custom' && !field.custom_type_name?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['custom_type_name'],
+      message: '请输入自定义字段类型名',
+    });
+  }
 });
 
 export const contentTypeCreateSchema = z.object({
@@ -49,5 +73,8 @@ export const contentTypeUpdateSchema = z.object({
   fields: z.array(fieldDefinitionSchema),
 });
 
-export type ContentTypeCreateInput = z.infer<typeof contentTypeCreateSchema>;
+export type FieldTypeOption = z.infer<typeof fieldTypeEnum>;
+export type ContentTypeFieldFormValue = z.infer<typeof fieldDefinitionSchema>;
+export type ContentTypeFormValues = z.infer<typeof contentTypeCreateSchema>;
+export type ContentTypeCreateInput = ContentTypeFormValues;
 export type ContentTypeUpdateInput = z.infer<typeof contentTypeUpdateSchema>;
