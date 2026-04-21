@@ -1,120 +1,293 @@
-import { useState, useRef, useMemo } from 'react';
-import { useAsync } from '@/hooks/useAsync';
-import { mediaApi } from '@/lib/api';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { useMemo, useState } from 'react';
+import {
+  Button,
+  Card,
+  Empty,
+  Image,
+  Pagination,
+  Popconfirm,
+  Segmented,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Upload,
+  type UploadProps,
+} from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import { Copy, Trash2, UploadCloud } from 'lucide-react';
+import {
+  useDeleteMedia,
+  useMediaList,
+  useUploadMedia,
+} from '@/features/media/hooks';
+import { toast } from '@/lib/toast';
+import { formatBytes, resolveMediaUrl } from '@/utils/format';
+import type { MediaAsset } from '@/types';
+
+const MIME_OPTIONS = [
+  { value: 'image/jpeg', label: 'JPEG' },
+  { value: 'image/png', label: 'PNG' },
+  { value: 'image/webp', label: 'WebP' },
+  { value: 'image/gif', label: 'GIF' },
+  { value: 'application/pdf', label: 'PDF' },
+  { value: 'video/mp4', label: 'MP4' },
+];
 
 export default function MediaPage() {
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [page, setPage] = useState(1);
-  const [mimeFilter, setMimeFilter] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
+  const [pageSize, setPageSize] = useState(20);
+  const [mime, setMime] = useState<string>('');
 
   const params = useMemo(() => {
-    const p: Record<string, string> = { page: String(page), pageSize: '20' };
-    if (mimeFilter) p['mime_type'] = mimeFilter;
+    const p: Record<string, string> = { page: String(page), pageSize: String(pageSize) };
+    if (mime) p.mime_type = mime;
     return p;
-  }, [page, mimeFilter]);
+  }, [page, pageSize, mime]);
 
-  const { data, loading, refetch } = useAsync(
-    () => mediaApi.list(params),
-    [params],
-  );
+  const { data, isLoading } = useMediaList(params);
+  const upload = useUploadMedia();
+  const del = useDeleteMedia();
 
-  async function handleUpload() {
-    const file = fileRef.current?.files?.[0];
-    if (!file) return;
-    setUploading(true);
+  const uploadProps: UploadProps = {
+    multiple: true,
+    showUploadList: false,
+    accept: 'image/*,application/pdf,video/mp4',
+    customRequest: async ({ file, onSuccess, onError }) => {
+      try {
+        await upload.mutateAsync(file as File);
+        toast.success(`已上传 ${(file as File).name}`);
+        onSuccess?.({});
+      } catch (err) {
+        toast.error(`${(file as File).name} 上传失败`);
+        onError?.(err as Error);
+      }
+    },
+  };
+
+  async function handleCopy(url: string) {
     try {
-      await mediaApi.upload(file);
-      if (fileRef.current) fileRef.current.value = '';
-      refetch();
-    } finally {
-      setUploading(false);
+      await navigator.clipboard.writeText(url);
+      toast.success('链接已复制');
+    } catch {
+      toast.error('复制失败');
     }
   }
 
+  const listColumns: ColumnsType<MediaAsset> = [
+    {
+      title: '预览',
+      key: 'preview',
+      width: 72,
+      render: (_: unknown, row) =>
+        row.mime_type.startsWith('image/') ? (
+          <Image
+            src={resolveMediaUrl(row.storage_path)}
+            alt={row.original_filename}
+            width={56}
+            height={56}
+            style={{ objectFit: 'cover', borderRadius: 4 }}
+          />
+        ) : (
+          <div className="grid h-14 w-14 place-items-center rounded bg-surface-alt font-mono text-xs text-text-secondary">
+            {row.mime_type.split('/')[1]?.toUpperCase().slice(0, 4) ?? 'FILE'}
+          </div>
+        ),
+    },
+    {
+      title: '文件名',
+      dataIndex: 'original_filename',
+      key: 'original_filename',
+      ellipsis: true,
+    },
+    {
+      title: '类型',
+      dataIndex: 'mime_type',
+      key: 'mime_type',
+      width: 140,
+      render: (v: string) => <Tag>{v}</Tag>,
+    },
+    {
+      title: '大小',
+      dataIndex: 'size',
+      key: 'size',
+      width: 100,
+      render: (v: number) => formatBytes(v),
+    },
+    {
+      title: '上传时间',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      render: (v: string) => new Date(v).toLocaleString('zh-CN'),
+      responsive: ['md'],
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 200,
+      render: (_: unknown, row) => (
+        <Space size="small">
+          <Button
+            size="small"
+            icon={<Copy size={12} />}
+            onClick={() =>
+              handleCopy(window.location.origin + resolveMediaUrl(row.storage_path))
+            }
+          >
+            链接
+          </Button>
+          <Popconfirm
+            title="删除媒体"
+            description={`删除 ${row.original_filename}？`}
+            okButtonProps={{ danger: true }}
+            okText="删除"
+            cancelText="取消"
+            onConfirm={async () => {
+              await del.mutateAsync(row.id);
+              toast.success('已删除');
+            }}
+          >
+            <Button size="small" danger icon={<Trash2 size={12} />} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
   return (
-    <div className="page">
-      <div className="page-header">
-        <h1>媒体管理</h1>
-        <div className="header-actions">
-          <select value={mimeFilter} onChange={(e) => { setMimeFilter(e.target.value); setPage(1); }}>
-            <option value="">全部类型</option>
-            <option value="image/jpeg">JPEG</option>
-            <option value="image/png">PNG</option>
-            <option value="image/webp">WebP</option>
-            <option value="application/pdf">PDF</option>
-          </select>
-          <input ref={fileRef} type="file" />
-          <button className="btn btn-primary" onClick={handleUpload} disabled={uploading}>
-            {uploading ? '上传中...' : '上传'}
-          </button>
-        </div>
+    <div className="p-6">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="m-0 text-xl font-semibold text-text">媒体管理</h1>
+        <Space size="small" wrap>
+          <Select
+            placeholder="全部类型"
+            style={{ width: 140 }}
+            value={mime || undefined}
+            allowClear
+            options={MIME_OPTIONS}
+            onChange={(v) => {
+              setMime(v ?? '');
+              setPage(1);
+            }}
+          />
+          <Segmented
+            value={viewMode}
+            onChange={(v) => setViewMode(v as typeof viewMode)}
+            options={[
+              { value: 'grid', label: '网格' },
+              { value: 'list', label: '列表' },
+            ]}
+          />
+        </Space>
       </div>
 
-      {loading ? (
-        <LoadingSpinner />
-      ) : (
-        <>
-          <div className="media-grid">
-            {data?.data.map((asset) => (
-              <div key={asset.id} className="media-card">
-                {asset.mime_type.startsWith('image/') ? (
-                  <img
-                    src={asset.storage_path.startsWith('/') ? asset.storage_path : `/uploads/${asset.storage_path}`}
-                    alt={asset.original_filename}
-                    className="media-preview"
-                  />
-                ) : (
-                  <div className="media-file-icon">{asset.mime_type.split('/')[1]?.toUpperCase()}</div>
-                )}
-                <div className="media-info">
-                  <span className="media-filename" title={asset.original_filename}>
-                    {asset.original_filename}
-                  </span>
-                  <span className="media-size">{formatSize(asset.size)}</span>
-                </div>
-                <div className="media-actions">
-                  <button
-                    className="btn btn-sm"
-                    onClick={() => {
-                      const url = asset.storage_path.startsWith('/') ? asset.storage_path : `/uploads/${asset.storage_path}`;
-                      navigator.clipboard.writeText(window.location.origin + url);
-                    }}
-                  >
-                    复制链接
-                  </button>
-                  <button
-                    className="btn btn-sm btn-danger"
-                    onClick={async () => {
-                      if (confirm(`确定删除 ${asset.original_filename}？`)) {
-                        await mediaApi.delete(asset.id);
-                        refetch();
-                      }
-                    }}
-                  >
-                    删除
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+      <Upload.Dragger {...uploadProps} className="mb-4">
+        <p className="ant-upload-drag-icon">
+          <UploadCloud size={28} style={{ display: 'inline-block' }} />
+        </p>
+        <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+        <p className="ant-upload-hint">支持多文件并行；单文件 ≤ 10MB</p>
+      </Upload.Dragger>
 
-          {data && data.page_count > 1 && (
-            <div className="pagination">
-              <button disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</button>
-              <span>{data.page} / {data.page_count}（共 {data.total} 条）</span>
-              <button disabled={page >= data.page_count} onClick={() => setPage(page + 1)}>下一页</button>
-            </div>
-          )}
-        </>
+      {viewMode === 'grid' ? (
+        isLoading ? null : (data?.data ?? []).length === 0 ? (
+          <Empty description="暂无媒体" />
+        ) : (
+          <>
+            <Image.PreviewGroup>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                {data?.data.map((asset) => (
+                  <Card key={asset.id} styles={{ body: { padding: 12 } }}>
+                    {asset.mime_type.startsWith('image/') ? (
+                      <Image
+                        src={resolveMediaUrl(asset.storage_path)}
+                        alt={asset.original_filename}
+                        style={{
+                          objectFit: 'cover',
+                          aspectRatio: '1 / 1',
+                          borderRadius: 4,
+                          width: '100%',
+                        }}
+                      />
+                    ) : (
+                      <div className="grid aspect-square place-items-center rounded bg-surface-alt font-mono text-sm text-text-secondary">
+                        {asset.mime_type.split('/')[1]?.toUpperCase().slice(0, 4) ?? 'FILE'}
+                      </div>
+                    )}
+                    <div
+                      className="mt-2 truncate text-xs font-medium text-text"
+                      title={asset.original_filename}
+                    >
+                      {asset.original_filename}
+                    </div>
+                    <div className="text-xs text-text-muted">
+                      {formatBytes(asset.size)}
+                    </div>
+                    <Space size={4} className="mt-2">
+                      <Button
+                        size="small"
+                        icon={<Copy size={12} />}
+                        onClick={() =>
+                          handleCopy(
+                            window.location.origin + resolveMediaUrl(asset.storage_path),
+                          )
+                        }
+                      />
+                      <Popconfirm
+                        title="删除媒体"
+                        description={`删除 ${asset.original_filename}？`}
+                        okButtonProps={{ danger: true }}
+                        okText="删除"
+                        cancelText="取消"
+                        onConfirm={async () => {
+                          await del.mutateAsync(asset.id);
+                          toast.success('已删除');
+                        }}
+                      >
+                        <Button size="small" danger icon={<Trash2 size={12} />} />
+                      </Popconfirm>
+                    </Space>
+                  </Card>
+                ))}
+              </div>
+            </Image.PreviewGroup>
+            {data && data.page_count > 1 && (
+              <div className="mt-6 flex justify-center">
+                <Pagination
+                  current={page}
+                  pageSize={pageSize}
+                  total={data.total}
+                  showSizeChanger
+                  pageSizeOptions={[10, 20, 50, 100]}
+                  onChange={(p, ps) => {
+                    setPage(p);
+                    setPageSize(ps);
+                  }}
+                />
+              </div>
+            )}
+          </>
+        )
+      ) : (
+        <Table<MediaAsset>
+          rowKey="id"
+          columns={listColumns}
+          dataSource={data?.data ?? []}
+          loading={isLoading}
+          scroll={{ x: 'max-content' }}
+          pagination={{
+            current: page,
+            pageSize,
+            total: data?.total ?? 0,
+            showSizeChanger: true,
+            onChange: (p, ps) => {
+              setPage(p);
+              setPageSize(ps);
+            },
+          }}
+        />
       )}
     </div>
   );
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
