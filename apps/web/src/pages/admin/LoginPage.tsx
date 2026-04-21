@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authApi } from '@/api';
+import { authApi } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
-import { ApiError } from '@/api/client';
+import { ApiError } from '@/lib/api/client';
 
 export default function AdminLoginPage() {
   const [username, setUsername] = useState('');

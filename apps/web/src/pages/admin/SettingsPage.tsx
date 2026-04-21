@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAsync } from '@/hooks/useAsync';
-import { settingsApi } from '@/api';
+import { settingsApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
 import type { SettingsEntry } from '@/types';
 

@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { useAuth } from '@/stores/auth';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
-import { ApiError } from '@/api/client';
-import { usersApi } from '@/api';
+import { ApiError } from '@/lib/api/client';
+import { usersApi } from '@/lib/api';
 
 export default function ProfilePage() {
   const { user, refresh, logout } = useAuth();

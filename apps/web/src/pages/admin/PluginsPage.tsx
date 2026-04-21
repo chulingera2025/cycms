@@ -1,5 +1,5 @@
 import { useAsync } from '@/hooks/useAsync';
-import { pluginsApi } from '@/api';
+import { pluginsApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
 import type { Plugin } from '@/types';
 

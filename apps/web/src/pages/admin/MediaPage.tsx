@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo } from 'react';
 import { useAsync } from '@/hooks/useAsync';
-import { mediaApi } from '@/api';
+import { mediaApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
 
 export default function MediaPage() {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAsync } from '@/hooks/useAsync';
-import { usersApi, rolesApi } from '@/api';
+import { usersApi, rolesApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
 import type { User, CreateUserInput, Role } from '@/types';
 

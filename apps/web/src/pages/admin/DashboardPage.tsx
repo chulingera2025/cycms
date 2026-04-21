@@ -1,6 +1,6 @@
 import { useAuth } from '@/stores/auth';
 import { useAsync } from '@/hooks/useAsync';
-import { contentTypesApi, usersApi } from '@/api';
+import { contentTypesApi, usersApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
 
 export default function DashboardPage() {

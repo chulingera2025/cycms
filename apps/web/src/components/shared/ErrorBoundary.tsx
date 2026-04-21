@@ -1,4 +1,5 @@
-import { Component, type ReactNode, type ErrorInfo } from 'react';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Button, Result } from 'antd';
 
 interface Props {
   children: ReactNode;
@@ -27,10 +28,24 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.error) {
       return (
         this.props.fallback ?? (
-          <div style={{ padding: '2rem', textAlign: 'center' }}>
-            <h2>出现错误</h2>
-            <p>{this.state.error.message}</p>
-            <button onClick={() => this.setState({ error: null })}>重试</button>
+          <div className="grid min-h-screen place-items-center p-6">
+            <Result
+              status="error"
+              title="出现错误"
+              subTitle={this.state.error.message}
+              extra={[
+                <Button
+                  key="retry"
+                  type="primary"
+                  onClick={() => this.setState({ error: null })}
+                >
+                  重试
+                </Button>,
+                <Button key="home" onClick={() => window.location.assign('/')}>
+                  回首页
+                </Button>,
+              ]}
+            />
           </div>
         )
       );

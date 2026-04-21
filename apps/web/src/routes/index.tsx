@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { AdminGuard, MemberGuard } from './guards';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { PageSkeleton } from '@/components/shared/PageSkeleton';
 import { AuthProvider } from '@/components/shared/AuthProvider';
 
 // Layouts
@@ -32,8 +32,14 @@ const MemberLoginPage = lazy(() => import('@/pages/member/LoginPage'));
 const MemberRegisterPage = lazy(() => import('@/pages/member/RegisterPage'));
 const ProfilePage = lazy(() => import('@/pages/member/ProfilePage'));
 
-function Lazy({ children }: { children: React.ReactNode }) {
-  return <Suspense fallback={<LoadingSpinner />}>{children}</Suspense>;
+function Lazy({
+  children,
+  variant = 'list',
+}: {
+  children: React.ReactNode;
+  variant?: 'list' | 'detail' | 'dashboard';
+}) {
+  return <Suspense fallback={<PageSkeleton variant={variant} />}>{children}</Suspense>;
 }
 
 export const router = createBrowserRouter([

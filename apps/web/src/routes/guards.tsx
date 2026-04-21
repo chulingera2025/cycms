@@ -1,17 +1,21 @@
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/stores/auth';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { PageSkeleton } from '@/components/shared/PageSkeleton';
 
 export function AdminGuard() {
   const { user, loading, isAdmin } = useAuth();
-  if (loading) return <LoadingSpinner />;
+  if (loading) return <PageSkeleton variant="dashboard" />;
   if (!user || !isAdmin) return <Navigate to="/admin/login" replace />;
   return <Outlet />;
 }
 
 export function MemberGuard() {
   const { user, loading } = useAuth();
-  if (loading) return <LoadingSpinner />;
-  if (!user) return <Navigate to="/login" replace />;
+  const location = useLocation();
+  if (loading) return <PageSkeleton variant="detail" />;
+  if (!user) {
+    const redirect = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/login?redirect=${redirect}`} replace />;
+  }
   return <Outlet />;
 }

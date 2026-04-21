@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useAsync } from '@/hooks/useAsync';
-import { contentTypesApi, contentApi } from '@/api';
+import { contentTypesApi, contentApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
 import type { ContentEntry, ContentTypeDefinition, ContentStatus } from '@/types';
 

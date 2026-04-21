@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
 import { useAsync } from '@/hooks/useAsync';
-import { publicApi } from '@/api';
+import { publicApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
 
 export default function ContentDetailPage() {

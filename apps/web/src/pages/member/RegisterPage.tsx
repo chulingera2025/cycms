@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { publicApi } from '@/api';
-import { ApiError } from '@/api/client';
+import { publicApi } from '@/lib/api';
+import { ApiError } from '@/lib/api/client';
 
 export default function MemberRegisterPage() {
   const [username, setUsername] = useState('');

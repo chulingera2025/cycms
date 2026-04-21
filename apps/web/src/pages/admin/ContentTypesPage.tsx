@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAsync } from '@/hooks/useAsync';
-import { contentTypesApi } from '@/api';
+import { contentTypesApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
 import type {
   ContentTypeDefinition,

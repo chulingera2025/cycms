@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, type ReactNode } from 'react';
 import { AuthContext, type AuthState } from '@/stores/auth';
-import { authApi } from '@/api/auth';
-import { getAccessToken, clearTokens } from '@/api/client';
+import { authApi } from '@/lib/api/auth';
+import { getAccessToken, clearTokens } from '@/lib/api/client';
 import type { User } from '@/types';
 
 const ADMIN_ROLES = ['super_admin', 'editor', 'author'];
