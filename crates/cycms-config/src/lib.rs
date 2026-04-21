@@ -6,6 +6,12 @@ use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_CONFIG_FILE: &str = "cycms.toml";
 
+/// JWT 密钥占位符：出现在默认配置中用于提示未覆盖的生产部署。
+pub const JWT_SECRET_PLACEHOLDER: &str = "CHANGE_ME_IN_PRODUCTION";
+
+/// HS256 签名推荐的最小密钥字节数。
+pub const MIN_JWT_SECRET_BYTES: usize = 32;
+
 /// 应用根配置，对应 `cycms.toml` 的顶层结构。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
@@ -238,7 +244,7 @@ impl Default for DatabaseConfig {
 impl Default for AuthConfig {
     fn default() -> Self {
         Self {
-            jwt_secret: "CHANGE_ME_IN_PRODUCTION".to_owned(),
+            jwt_secret: JWT_SECRET_PLACEHOLDER.to_owned(),
             access_token_ttl_secs: 900,
             refresh_token_ttl_secs: 1_209_600,
             argon2: Argon2Config::default(),

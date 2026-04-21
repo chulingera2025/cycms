@@ -9,6 +9,7 @@ use axum::response::{IntoResponse, Response};
 use cycms_auth::AuthEngine;
 use cycms_config::AppConfig;
 use cycms_config::CorsConfig;
+use cycms_config::{JWT_SECRET_PLACEHOLDER, MIN_JWT_SECRET_BYTES};
 use cycms_content_engine::ContentEngine;
 use cycms_content_model::{ContentModelRegistry, FieldTypeRegistry, seed_default_types};
 use cycms_core::{Error, Result};
@@ -85,6 +86,8 @@ impl Kernel {
     /// # Errors
     /// 任意子系统初始化失败时返回错误。
     pub async fn bootstrap(&self, system_migrations_dir: Option<&Path>) -> Result<AppContext> {
+        validate_auth_config(&self.config)?;
+
         let db = Arc::new(DatabasePool::connect(&self.config.database).await?);
 
         let migration_engine = Arc::new(MigrationEngine::new(Arc::clone(&db)));
@@ -514,4 +517,107 @@ fn resolve_web_dist_dir(config_path: Option<&Path>) -> PathBuf {
         .map(Path::to_path_buf)
         .unwrap_or_default();
     base.join("apps/web/dist")
+}
+
+/// 启动前的认证配置安全校验。
+///
+/// 回环地址视为本机开发，仅警告；其他地址视为可被远端访问，占位符或过短密钥
+/// 直接拒绝启动，避免默认配置在生产环境被误用。
+fn validate_auth_config(config: &AppConfig) -> Result<()> {
+    let host = config.server.host.as_str();
+    let is_loopback = is_loopback_host(host);
+    let secret = config.auth.jwt_secret.as_str();
+
+    if secret == JWT_SECRET_PLACEHOLDER {
+        if is_loopback {
+            warn!(
+                host = %host,
+                "auth.jwt_secret 仍为默认占位符，仅适用于本机开发；生产请设置 CYCMS__AUTH__JWT_SECRET"
+            );
+            return Ok(());
+        }
+        return Err(Error::BadRequest {
+            message: format!(
+                "auth.jwt_secret 仍为默认占位符，拒绝在 host={host} 启动；\
+                 请在 cycms.toml 中替换或设置 CYCMS__AUTH__JWT_SECRET 环境变量"
+            ),
+            source: None,
+        });
+    }
+
+    if secret.len() < MIN_JWT_SECRET_BYTES {
+        if is_loopback {
+            warn!(
+                secret_len = secret.len(),
+                minimum = MIN_JWT_SECRET_BYTES,
+                "auth.jwt_secret 长度不足，HS256 推荐至少 {MIN_JWT_SECRET_BYTES} 字节"
+            );
+            return Ok(());
+        }
+        return Err(Error::BadRequest {
+            message: format!(
+                "auth.jwt_secret 长度 {} 小于推荐的 {MIN_JWT_SECRET_BYTES} 字节，拒绝在 host={host} 启动",
+                secret.len()
+            ),
+            source: None,
+        });
+    }
+
+    Ok(())
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    matches!(host, "127.0.0.1" | "localhost" | "::1" | "[::1]")
+}
+
+#[cfg(test)]
+mod tests {
+    use cycms_config::{AppConfig, JWT_SECRET_PLACEHOLDER};
+    use cycms_core::Error;
+
+    use super::validate_auth_config;
+
+    fn config_with(host: &str, secret: &str) -> AppConfig {
+        let mut config = AppConfig::default();
+        config.server.host = host.to_owned();
+        config.auth.jwt_secret = secret.to_owned();
+        config
+    }
+
+    #[test]
+    fn allows_placeholder_on_loopback_with_warning() {
+        for host in ["127.0.0.1", "localhost", "::1", "[::1]"] {
+            let config = config_with(host, JWT_SECRET_PLACEHOLDER);
+            validate_auth_config(&config).expect("loopback 应允许占位符启动");
+        }
+    }
+
+    #[test]
+    fn rejects_placeholder_on_non_loopback() {
+        let config = config_with("0.0.0.0", JWT_SECRET_PLACEHOLDER);
+        let err = validate_auth_config(&config).unwrap_err();
+        assert!(matches!(err, Error::BadRequest { .. }));
+    }
+
+    #[test]
+    fn allows_short_secret_on_loopback() {
+        let config = config_with("127.0.0.1", "too-short");
+        validate_auth_config(&config).expect("loopback 允许弱密钥启动");
+    }
+
+    #[test]
+    fn rejects_short_secret_on_non_loopback() {
+        let config = config_with("10.0.0.1", "too-short");
+        let err = validate_auth_config(&config).unwrap_err();
+        assert!(matches!(err, Error::BadRequest { .. }));
+    }
+
+    #[test]
+    fn accepts_strong_secret_on_any_host() {
+        let strong = "a".repeat(48);
+        for host in ["127.0.0.1", "0.0.0.0", "example.com"] {
+            let config = config_with(host, &strong);
+            validate_auth_config(&config).expect("强密钥在任何 host 都应通过");
+        }
+    }
 }

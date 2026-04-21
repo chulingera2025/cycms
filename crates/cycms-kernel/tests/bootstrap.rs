@@ -27,6 +27,9 @@ async fn bootstrap_with_migrations_creates_core_tables() {
     fs::write(
         &config_path,
         r#"
+[server]
+host = "127.0.0.1"
+
 [database]
 driver = "sqlite"
 url = "sqlite::memory:"
@@ -164,6 +167,9 @@ async fn bootstrap_without_migrations_does_not_create_tables() {
     fs::write(
         &config_path,
         r#"
+[server]
+host = "127.0.0.1"
+
 [database]
 driver = "sqlite"
 url = "sqlite::memory:"
