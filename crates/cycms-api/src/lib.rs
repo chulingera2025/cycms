@@ -1,3 +1,4 @@
+mod admin_extensions_observability;
 mod common;
 mod handlers;
 mod query;
@@ -14,6 +15,13 @@ use cycms_auth::auth_middleware;
 use cycms_core::Result;
 
 pub use state::ApiState;
+pub use admin_extensions_observability::{
+    AdminExtensionClientEventPayload, AdminExtensionDiagnosticsResponse,
+    AdminExtensionEventRecord, AdminExtensionEventStore, AdminExtensionSecurityState,
+    SharedAdminExtensionEventStore, build_admin_extension_csp_policy,
+    build_admin_extension_security_state, build_csp_report_event,
+    normalize_csp_report_payload, with_request_context,
+};
 
 pub fn build_router(state: Arc<ApiState>) -> Router {
     let auth_layer =

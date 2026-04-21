@@ -3,6 +3,11 @@ import { Alert, Button, Drawer, Form, Input, Space } from 'antd';
 import { useAdminExtensions } from '@/features/admin-extensions';
 import { PluginSlotHost } from '@/features/admin-extensions/module-host';
 import { FieldRenderer } from './FieldRenderer';
+import {
+  buildHostFieldError,
+  isEntryFieldDirty,
+  resolveInitialFields,
+} from './editorState';
 import { getFieldTypeKind, getFieldTypeLabel } from '@/features/content-types/fieldType';
 import { ApiError } from '@/lib/api/client';
 import type { ContentEntry, ContentTypeDefinition } from '@/types';
@@ -44,8 +49,12 @@ export function EntryEditor({
   const { bootstrap, getSlots } = useAdminExtensions();
   const [slug, setSlug] = useState('');
   const [fields, setFields] = useState<Record<string, unknown>>({});
+  const [touchedFields, setTouchedFields] = useState<string[]>([]);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [pluginFieldErrors, setPluginFieldErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState('');
   const contentTypeApiId = contentType?.api_id ?? '';
+  const initialFields = useMemo(() => resolveInitialFields(initial), [initial]);
 
   const sidebarSlots = useMemo(
     () => (contentTypeApiId ? getSlots('content.editor.sidebar', contentTypeApiId) : []),
@@ -55,27 +64,65 @@ export function EntryEditor({
   useEffect(() => {
     if (open) {
       setSlug(initial?.slug ?? '');
-      setFields((initial?.fields as Record<string, unknown>) ?? {});
+      setFields(initialFields);
+      setTouchedFields([]);
+      setSubmitAttempted(false);
+      setPluginFieldErrors({});
       setSubmitError('');
     }
-  }, [open, initial]);
+  }, [initial, initialFields, open]);
 
   if (!contentType) return null;
 
   const hasSidebarSlots = sidebarSlots.length > 0;
+  const touchedFieldSet = new Set(touchedFields);
+  const dirtyFields = contentType.fields
+    .filter((field) => isEntryFieldDirty(initialFields, field.api_id, fields[field.api_id]))
+    .map((field) => field.api_id);
+  const hostFieldErrors = Object.fromEntries(
+    contentType.fields.map((field) => [field.api_id, buildHostFieldError(field, fields[field.api_id])]),
+  ) as Record<string, string | null>;
+  const validationErrors = Object.fromEntries(
+    contentType.fields.map((field) => {
+      const hostError = touchedFieldSet.has(field.api_id) || submitAttempted ? hostFieldErrors[field.api_id] : null;
+      return [field.api_id, pluginFieldErrors[field.api_id] ?? hostError ?? null];
+    }),
+  ) as Record<string, string | null>;
+  const isDirty = dirtyFields.length > 0 || slug !== (initial?.slug ?? '');
 
   function handleChange(apiId: string, value: unknown) {
+    setTouchedFields((prev) => (prev.includes(apiId) ? prev : [...prev, apiId]));
     setFields((prev) => ({ ...prev, [apiId]: value }));
+  }
+
+  function setFieldError(apiId: string, message: string | null) {
+    setPluginFieldErrors((prev) => {
+      const next = { ...prev };
+      if (message) {
+        next[apiId] = message;
+      } else {
+        delete next[apiId];
+      }
+      return next;
+    });
+  }
+
+  function validateField(apiId: string) {
+    setTouchedFields((prev) => (prev.includes(apiId) ? prev : [...prev, apiId]));
+    return pluginFieldErrors[apiId] ?? hostFieldErrors[apiId] ?? null;
   }
 
   async function handleSubmit() {
     setSubmitError('');
+    setSubmitAttempted(true);
     if (!contentType) return;
-    const missing = contentType.fields.filter(
-      (f) => f.required && (fields[f.api_id] == null || fields[f.api_id] === ''),
-    );
-    if (missing.length > 0) {
-      setSubmitError(`以下字段必填：${missing.map((m) => m.name).join('、')}`);
+    setTouchedFields(contentType.fields.map((field) => field.api_id));
+    const blockingErrors = contentType.fields
+      .map((field) => pluginFieldErrors[field.api_id] ?? hostFieldErrors[field.api_id] ?? null)
+      .filter((message): message is string => Boolean(message));
+    const firstBlockingError = blockingErrors[0];
+    if (firstBlockingError) {
+      setSubmitError(firstBlockingError);
       return;
     }
     const parsed: Record<string, unknown> = {};
@@ -153,6 +200,8 @@ export function EntryEditor({
                 </span>
               }
               extra={fd.description}
+              help={validationErrors[fd.api_id] ?? undefined}
+              validateStatus={validationErrors[fd.api_id] ? 'error' : undefined}
             >
               <FieldRenderer
                 field={fd}
@@ -161,6 +210,10 @@ export function EntryEditor({
                 contentTypeApiId={contentType.api_id}
                 entryId={initial?.id}
                 mode={isEdit ? 'edit' : 'create'}
+                dirty={dirtyFields.includes(fd.api_id)}
+                validationError={validationErrors[fd.api_id]}
+                setValidationError={(message) => setFieldError(fd.api_id, message)}
+                validate={() => validateField(fd.api_id)}
               />
             </Form.Item>
           ))}
@@ -172,6 +225,9 @@ export function EntryEditor({
               <h3 className="m-0 text-sm font-semibold text-text">插件侧边栏</h3>
               <p className="mt-1 text-xs text-text-muted">
                 当前区域由已启用插件通过 `content.editor.sidebar` 扩展点注入。
+              </p>
+              <p className="mt-1 text-xs text-text-muted">
+                当前表单{isDirty ? '存在未保存改动' : '尚未产生未保存改动'}，宿主会同步暴露 dirty-state 与校验错误给插件模块。
               </p>
             </div>
             {sidebarSlots.map((slot) => (
@@ -185,7 +241,12 @@ export function EntryEditor({
                 styles={slot.contribution.styles}
                 contentTypeApiId={contentType.api_id}
                 values={fields}
+                dirtyFields={dirtyFields}
+                validationErrors={validationErrors}
                 setFieldValue={handleChange}
+                setFieldError={setFieldError}
+                getFieldError={(apiId) => validationErrors[apiId] ?? null}
+                validateField={validateField}
                 entryId={initial?.id}
                 mode={isEdit ? 'edit' : 'create'}
               />

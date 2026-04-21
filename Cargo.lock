@@ -767,6 +767,7 @@ dependencies = [
  "cycms-kernel",
  "cycms-media",
  "cycms-migrate",
+ "cycms-observability",
  "cycms-openapi",
  "cycms-permission",
  "cycms-plugin-api",

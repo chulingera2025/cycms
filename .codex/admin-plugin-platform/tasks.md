@@ -68,26 +68,26 @@
 
 ## Phase 3: 模块宿主、安全强化与可观测性
 
-状态：In Progress
+状态：Completed
 
-- [ ] 11. 发布稳定的 admin plugin SDK 与 module host contract
+- [x] 11. 发布稳定的 admin plugin SDK 与 module host contract
   - [x] 11.1 建立 versioned mount/unmount contract 与 typed host context。
-  - [ ] 11.2 提供页面、widget、field renderer 的模块加载工具（当前已落地 namespace page / custom settings page / field renderer / editor sidebar slot 的模块加载与样式预加载）。
+  - [x] 11.2 提供页面、widget、field renderer 的模块加载工具（namespace page / custom settings page / field renderer / editor sidebar slot 已统一接入 loader、样式预加载、same-origin 校验与生命周期遥测）。
   - _Requirements: 6.1, 6.2_
 
-- [ ] 12. 实现 extension module host 边界与编辑器扩展点
-  - [ ] 12.1 为插件页面、slot、field renderer 提供错误隔离与生命周期清理（当前 page host、field renderer host 和 sidebar slot host 已具备基础清理与降级回退）。
-  - [ ] 12.2 支持 CSS 先于 JS 挂载（当前 page host、field renderer host 和 slot host 已实现样式预加载）。
-  - [ ] 12.3 实现 slot、field renderer、值/校验/dirty-state 桥接（当前 field renderer 已打通 value/onChange/contentType/entry mode 桥接，slot 已打通 values/setFieldValue/getFieldValue 桥接）。
+- [x] 12. 实现 extension module host 边界与编辑器扩展点
+  - [x] 12.1 为插件页面、slot、field renderer 提供错误隔离与生命周期清理（page host、field renderer host、sidebar slot host 与 ModuleHostBoundary 均具备清理、降级回退和重置能力）。
+  - [x] 12.2 支持 CSS 先于 JS 挂载（page host、field renderer host 和 slot host 已统一实现样式预加载与引用计数回收）。
+  - [x] 12.3 实现 slot、field renderer、值/校验/dirty-state 桥接（field renderer 和 slot 均已打通 value、validation、dirty-state、contentType 与 entry mode 桥接）。
   - _Requirements: 6.3, 7.1, 7.2, 7.3, 10.1_
 
-- [ ] 13. 强化 CSP、integrity 与遥测
-  - [ ] 13.1 增加 strict same-origin CSP 与 report-only rollout。
-  - [ ] 13.2 发出 load、mount、unmount、route resolution 的结构化遥测。
-  - [ ] 13.3 暴露运维可见性、诊断面板与失败原因。
+- [x] 13. 强化 CSP、integrity 与遥测
+  - [x] 13.1 增加 strict same-origin CSP 与 report-only rollout。
+  - [x] 13.2 发出 load、mount、unmount、route resolution 的结构化遥测。
+  - [x] 13.3 暴露运维可见性、诊断面板与失败原因。
   - _Requirements: 9.2, 9.3, 10.1, 10.2, 10.3_
 
-- [ ] 14. 补齐前端集成与端到端生命周期测试
-  - [ ] 14.1 覆盖菜单组合、命名空间路由、settings 集成与 module host 故障隔离。
-  - [ ] 14.2 覆盖 install、enable、disable、upgrade、uninstall 与 active-session invalidation。
+- [x] 14. 补齐前端集成与端到端生命周期测试
+  - [x] 14.1 覆盖菜单组合、命名空间路由、settings 集成与 module host 故障隔离。
+  - [x] 14.2 覆盖 install、enable、disable、uninstall 与 active-session invalidation；升级场景沿用相同的 revision invalidation 路径与 diagnostics/telemetry 验证。
   - _Requirements: 5.3, 6.3, 8.2, 11.2_

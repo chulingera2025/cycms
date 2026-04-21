@@ -24,6 +24,10 @@ interface Props {
   contentTypeApiId: string;
   entryId?: string;
   mode: 'create' | 'edit';
+  dirty?: boolean;
+  validationError?: string | null;
+  setValidationError?: (message: string | null) => void;
+  validate?: () => string | null;
 }
 
 function formatCustomFallbackValue(value: unknown) {
@@ -62,6 +66,10 @@ function CustomFieldRenderer({
   contentTypeApiId,
   entryId,
   mode,
+  dirty = false,
+  validationError = null,
+  setValidationError = () => undefined,
+  validate = () => null,
 }: Props) {
   const { bootstrap, getFieldRenderer } = useAdminExtensions();
   const [fallbackReason, setFallbackReason] = useState<string | null>(null);
@@ -119,6 +127,10 @@ function CustomFieldRenderer({
       contentTypeApiId={contentTypeApiId}
       entryId={entryId}
       mode={mode}
+      dirty={dirty}
+      validationError={validationError}
+      setValidationError={setValidationError}
+      validate={validate}
       onFatalError={(error) => {
         setFallbackReason(`插件字段渲染器挂载失败：${error.message}`);
       }}
@@ -184,7 +196,18 @@ function MediaField({ value, onChange }: { value: unknown; onChange: (v: unknown
   );
 }
 
-export function FieldRenderer({ field, value, onChange, contentTypeApiId, entryId, mode }: Props) {
+export function FieldRenderer({
+  field,
+  value,
+  onChange,
+  contentTypeApiId,
+  entryId,
+  mode,
+  dirty,
+  validationError,
+  setValidationError,
+  validate,
+}: Props) {
   const fieldTypeKind = getFieldTypeKind(field.field_type);
 
   switch (fieldTypeKind) {
@@ -287,6 +310,10 @@ export function FieldRenderer({ field, value, onChange, contentTypeApiId, entryI
           contentTypeApiId={contentTypeApiId}
           entryId={entryId}
           mode={mode}
+          dirty={dirty}
+          validationError={validationError}
+          setValidationError={setValidationError}
+          validate={validate}
         />
       );
 

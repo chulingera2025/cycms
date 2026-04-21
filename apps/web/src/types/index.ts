@@ -271,6 +271,42 @@ export interface ExtensionDiagnostic {
   message: string;
 }
 
+export interface AdminExtensionEventRecord {
+  id: string;
+  recordedAt: string;
+  source: string;
+  level: string;
+  eventName: string;
+  message: string;
+  actorId?: string;
+  requestId?: string;
+  pluginName?: string;
+  contributionId?: string;
+  contributionKind?: string;
+  fullPath?: string;
+  detail?: unknown;
+}
+
+export interface AdminExtensionSecurityState {
+  cspEnabled: boolean;
+  cspReportOnly: boolean;
+  cspHeaderName: string;
+  cspPolicy: string;
+  cspReportUri?: string;
+}
+
+export interface AdminExtensionClientEventPayload {
+  source: string;
+  level: string;
+  eventName: string;
+  message: string;
+  pluginName?: string;
+  contributionId?: string;
+  contributionKind?: string;
+  fullPath?: string;
+  detail?: unknown;
+}
+
 export interface BootstrapMenuContribution {
   id: string;
   label: string;
@@ -345,6 +381,8 @@ export interface AdminExtensionBootstrap {
 export interface AdminExtensionDiagnostics {
   revision: string;
   diagnostics: ExtensionDiagnostic[];
+  recentEvents: AdminExtensionEventRecord[];
+  security: AdminExtensionSecurityState;
 }
 
 // ── Revisions ────────────────────────────────────────────────────────────

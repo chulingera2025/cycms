@@ -1,6 +1,21 @@
-import { Button, Popconfirm, Space, Table, Tag } from 'antd';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import {
+  Alert,
+  Button,
+  Descriptions,
+  Drawer,
+  Empty,
+  List,
+  Popconfirm,
+  Space,
+  Table,
+  Tag,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { usePluginAction, usePlugins } from '@/features/plugins/hooks';
+import { adminExtensionsApi } from '@/lib/api/admin-extensions';
+import { qk } from '@/lib/query-keys';
 import { toast } from '@/lib/toast';
 import type { Plugin, PluginStatus } from '@/types';
 
@@ -21,7 +36,17 @@ const STATUS_LABEL: Record<PluginStatus, string> = {
 };
 
 export default function PluginsPage() {
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const { data: plugins, isLoading, refetch, isRefetching } = usePlugins();
+  const {
+    data: diagnostics,
+    isLoading: diagnosticsLoading,
+    refetch: refetchDiagnostics,
+    isRefetching: diagnosticsRefetching,
+  } = useQuery({
+    queryKey: qk.adminExtensions.diagnostics,
+    queryFn: () => adminExtensionsApi.diagnostics(),
+  });
   const install = usePluginAction('install');
   const enable = usePluginAction('enable');
   const disable = usePluginAction('disable');
@@ -127,9 +152,12 @@ export default function PluginsPage() {
             将插件放入 <code className="font-mono">plugins/</code> 目录后点击刷新发现
           </p>
         </div>
-        <Button onClick={() => refetch()} loading={isRefetching}>
-          刷新
-        </Button>
+        <Space>
+          <Button onClick={() => setDiagnosticsOpen(true)}>扩展诊断</Button>
+          <Button onClick={() => refetch()} loading={isRefetching}>
+            刷新
+          </Button>
+        </Space>
       </div>
       <Table<Plugin>
         rowKey="name"
@@ -139,6 +167,115 @@ export default function PluginsPage() {
         pagination={false}
         scroll={{ x: 'max-content' }}
       />
+      <Drawer
+        open={diagnosticsOpen}
+        onClose={() => setDiagnosticsOpen(false)}
+        title="扩展诊断与最近事件"
+        width={760}
+        extra={
+          <Button onClick={() => refetchDiagnostics()} loading={diagnosticsRefetching}>
+            刷新诊断
+          </Button>
+        }
+      >
+        {diagnosticsLoading && <Alert type="info" showIcon message="正在加载扩展诊断信息" />}
+        {diagnostics && (
+          <div className="space-y-6">
+            <Descriptions
+              column={1}
+              items={[
+                { key: 'revision', label: '当前 revision', children: diagnostics.revision },
+                {
+                  key: 'csp',
+                  label: 'CSP 模式',
+                  children: diagnostics.security.cspEnabled
+                    ? diagnostics.security.cspReportOnly
+                      ? `${diagnostics.security.cspHeaderName}（report-only）`
+                      : diagnostics.security.cspHeaderName
+                    : '未启用',
+                },
+                {
+                  key: 'policy',
+                  label: 'CSP 策略',
+                  children: (
+                    <pre className="m-0 whitespace-pre-wrap break-all rounded bg-surface-alt p-3 text-xs text-text-muted">
+                      {diagnostics.security.cspPolicy || '未配置'}
+                    </pre>
+                  ),
+                },
+              ]}
+            />
+
+            <section className="space-y-3">
+              <div>
+                <h2 className="m-0 text-base font-semibold text-text">Bootstrap 诊断</h2>
+                <p className="mt-1 text-sm text-text-muted">
+                  当前展示的是后端根据已安装插件 frontend runtime state 计算出的诊断结果。
+                </p>
+              </div>
+              {diagnostics.diagnostics.length > 0 ? (
+                <List
+                  dataSource={diagnostics.diagnostics}
+                  renderItem={(item) => (
+                    <List.Item>
+                      <Alert
+                        type={item.severity === 'error' ? 'error' : item.severity === 'warning' ? 'warning' : 'info'}
+                        showIcon
+                        message={`${item.pluginName}@${item.pluginVersion} · ${item.code}`}
+                        description={item.message}
+                      />
+                    </List.Item>
+                  )}
+                />
+              ) : (
+                <Empty description="当前没有 frontend diagnostics" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
+            </section>
+
+            <section className="space-y-3">
+              <div>
+                <h2 className="m-0 text-base font-semibold text-text">最近事件</h2>
+                <p className="mt-1 text-sm text-text-muted">
+                  包含宿主上报的模块 load/mount/unmount、route resolution、插件动作以及 CSP report。
+                </p>
+              </div>
+              {diagnostics.recentEvents.length > 0 ? (
+                <List
+                  itemLayout="vertical"
+                  dataSource={diagnostics.recentEvents}
+                  renderItem={(item) => (
+                    <List.Item>
+                      <div className="space-y-2 rounded border border-border bg-surface p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Tag color={item.level === 'error' ? 'red' : item.level === 'warning' ? 'gold' : 'blue'}>
+                            {item.level}
+                          </Tag>
+                          <Tag>{item.source}</Tag>
+                          <Tag>{item.eventName}</Tag>
+                          {item.pluginName && <Tag color="purple">{item.pluginName}</Tag>}
+                        </div>
+                        <div className="text-sm text-text">{item.message}</div>
+                        <div className="text-xs text-text-muted">
+                          {item.recordedAt}
+                          {item.fullPath ? ` · ${item.fullPath}` : ''}
+                          {item.requestId ? ` · request ${item.requestId}` : ''}
+                        </div>
+                        {item.detail !== undefined && item.detail !== null ? (
+                          <pre className="m-0 whitespace-pre-wrap break-all rounded bg-surface-alt p-3 text-xs text-text-muted">
+                            {JSON.stringify(item.detail, null, 2)}
+                          </pre>
+                        ) : null}
+                      </div>
+                    </List.Item>
+                  )}
+                />
+              ) : (
+                <Empty description="当前还没有扩展事件" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
+            </section>
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 }

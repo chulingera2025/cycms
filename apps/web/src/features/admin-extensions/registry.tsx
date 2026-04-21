@@ -10,6 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminExtensionsApi } from '@/lib/api';
 import { qk } from '@/lib/query-keys';
 import { notify } from '@/lib/toast';
+import { reportAdminExtensionEvent } from './telemetry';
 import { useAuth } from '@/stores/auth';
 import {
   RegistryContext,
@@ -101,6 +102,13 @@ export function AdminExtensionRegistryProvider({ children }: { children: ReactNo
       notify.warning(
         '插件扩展注册表已更新，后台菜单、命名空间路由和设置页将按最新状态重算。',
       );
+      reportAdminExtensionEvent({
+        source: 'host',
+        level: 'info',
+        eventName: 'registry.revision.changed',
+        message: `插件扩展注册表已从 ${previousRevision} 更新为 ${nextRevision}`,
+        detail: { previousRevision, currentRevision: nextRevision, changedAt },
+      });
     }
 
     if (previousRevision !== nextRevision) {
@@ -129,6 +137,17 @@ export function AdminExtensionRegistryProvider({ children }: { children: ReactNo
         notify.warning(
           '检测到其他管理会话更新了插件注册表，当前页面将同步最新扩展状态。',
         );
+        reportAdminExtensionEvent({
+          source: 'host',
+          level: 'info',
+          eventName: 'registry.revision.synced',
+          message: `检测到其他会话将插件扩展注册表更新为 ${event.revision}`,
+          detail: {
+            previousRevision,
+            currentRevision: event.revision,
+            changedAt: event.changedAt,
+          },
+        });
       }
 
       knownRevisionRef.current = event.revision;

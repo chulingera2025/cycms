@@ -54,4 +54,15 @@
 
 ## 3. Final Validation
 
-All 33 acceptance criteria are fully traced to the new phase-based implementation plan. The specification remains internally consistent after the shift from a flat task list to three delivery milestones, phase 1 has concrete backend code and validation coverage in the repository, phase 2 is now complete with validated web build/lint and active-session invalidation behavior, and phase 3 has started with working namespace page, field renderer, and editor sidebar slot module hosts that exercise the new mount/unmount contract inside the official admin shell.
+All 33 acceptance criteria are fully traced to the new phase-based implementation plan. The specification remains internally consistent after the shift from a flat task list to three delivery milestones, phase 1 has concrete backend code and validation coverage in the repository, phase 2 is complete with validated web build/lint and active-session invalidation behavior, and phase 3 is now complete with working namespace/settings page hosts, field renderer host, editor sidebar slot host, same-origin CSP enforcement, structured telemetry, diagnostics UI, and focused frontend integration tests inside the official admin shell.
+
+Repository validation was rerun after phase 3 completion with the following commands, all of which passed:
+
+1. `cargo test -p cycms-config`
+2. `cargo test -p cycms-api --test gateway`
+3. `cargo check -p cycms-kernel`
+4. `cd apps/web && npm run lint`
+5. `cd apps/web && npm run test`
+6. `cd apps/web && npm run build`
+
+The only remaining non-fatal validation note is the existing Vite chunk-size warning during `apps/web` production build, which is a performance recommendation rather than a correctness issue.

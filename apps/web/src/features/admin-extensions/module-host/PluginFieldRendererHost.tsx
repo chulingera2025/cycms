@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Skeleton } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { reportAdminExtensionEvent } from '@/features/admin-extensions/telemetry';
 import { api } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import type { FieldDefinition } from '@/types';
@@ -25,6 +26,10 @@ interface PluginFieldRendererHostProps {
   contentTypeApiId: string;
   entryId?: string;
   mode: 'create' | 'edit';
+  dirty: boolean;
+  validationError: string | null;
+  setValidationError: (message: string | null) => void;
+  validate: () => string | null;
   onFatalError?: (error: Error) => void;
 }
 
@@ -60,6 +65,10 @@ export function PluginFieldRendererHost({
   contentTypeApiId,
   entryId,
   mode,
+  dirty,
+  validationError,
+  setValidationError,
+  validate,
   onFatalError,
 }: PluginFieldRendererHostProps) {
   const auth = useAuth();
@@ -76,6 +85,10 @@ export function PluginFieldRendererHost({
   const contentTypeApiIdRef = useRef(contentTypeApiId);
   const entryIdRef = useRef(entryId);
   const modeRef = useRef(mode);
+  const dirtyRef = useRef(dirty);
+  const validationErrorRef = useRef(validationError);
+  const setValidationErrorRef = useRef(setValidationError);
+  const validateRef = useRef(validate);
   const [isLoading, setIsLoading] = useState(true);
   const [failed, setFailed] = useState(false);
 
@@ -92,7 +105,11 @@ export function PluginFieldRendererHost({
     contentTypeApiIdRef.current = contentTypeApiId;
     entryIdRef.current = entryId;
     modeRef.current = mode;
-  }, [contentTypeApiId, entryId, field, mode, value]);
+    dirtyRef.current = dirty;
+    validationErrorRef.current = validationError;
+    setValidationErrorRef.current = setValidationError;
+    validateRef.current = validate;
+  }, [contentTypeApiId, dirty, entryId, field, mode, setValidationError, validate, validationError, value]);
 
   const buildContext = useCallback(
     (container: HTMLElement): AdminPluginMountContext => ({
@@ -127,6 +144,14 @@ export function PluginFieldRendererHost({
         contentTypeApiId: contentTypeApiIdRef.current,
         entryId: entryIdRef.current,
         mode: modeRef.current,
+        dirty: dirtyRef.current,
+        validationError: validationErrorRef.current,
+        setValidationError(message) {
+          setValidationErrorRef.current(message);
+        },
+        validate() {
+          return validateRef.current();
+        },
       },
     }),
     [
@@ -194,6 +219,17 @@ export function PluginFieldRendererHost({
       container.innerHTML = '';
       setIsLoading(true);
       setFailed(false);
+      reportAdminExtensionEvent({
+        source: 'host',
+        level: 'info',
+        eventName: 'module.load.start',
+        message: `开始加载字段渲染器 ${pluginName}:${contributionId}`,
+        pluginName,
+        contributionId,
+        contributionKind: 'fieldRenderer',
+        fullPath: location.pathname,
+        detail: { moduleUrl, contentTypeApiId: contentTypeApiIdRef.current },
+      });
 
       try {
         releaseStyles = await retainPluginStyles(styles);
@@ -220,11 +256,31 @@ export function PluginFieldRendererHost({
         }
 
         setIsLoading(false);
+        reportAdminExtensionEvent({
+          source: 'host',
+          level: 'info',
+          eventName: 'module.mount.success',
+          message: `字段渲染器 ${pluginName}:${contributionId} 已挂载`,
+          pluginName,
+          contributionId,
+          contributionKind: 'fieldRenderer',
+          fullPath: location.pathname,
+        });
       } catch (mountError) {
         const nextError = asError(mountError);
         logger.error('字段渲染器模块加载或挂载失败', nextError);
         setFailed(true);
         setIsLoading(false);
+        reportAdminExtensionEvent({
+          source: 'host',
+          level: 'error',
+          eventName: 'module.mount.error',
+          message: `字段渲染器 ${pluginName}:${contributionId} 挂载失败：${nextError.message}`,
+          pluginName,
+          contributionId,
+          contributionKind: 'fieldRenderer',
+          fullPath: location.pathname,
+        });
         onFatalError?.(nextError);
         await runCleanup();
       }
@@ -234,9 +290,19 @@ export function PluginFieldRendererHost({
 
     return () => {
       disposed = true;
+      reportAdminExtensionEvent({
+        source: 'host',
+        level: 'info',
+        eventName: 'module.unmount.start',
+        message: `字段渲染器 ${pluginName}:${contributionId} 开始卸载`,
+        pluginName,
+        contributionId,
+        contributionKind: 'fieldRenderer',
+        fullPath: location.pathname,
+      });
       void runCleanup();
     };
-  }, [buildContext, logger, moduleUrl, onFatalError, styleKey, styles]);
+  }, [buildContext, contributionId, location.pathname, logger, moduleUrl, onFatalError, pluginName, styleKey, styles]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -255,6 +321,8 @@ export function PluginFieldRendererHost({
     failed,
     field,
     mode,
+    dirty,
+    validationError,
     value,
   ]);
 

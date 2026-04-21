@@ -40,8 +40,14 @@ export interface AdminPluginMountContext {
     entryId?: string;
     mode: 'create' | 'edit';
     values: Record<string, unknown>;
+    dirtyFields: string[];
+    isDirty: boolean;
+    validationErrors: Record<string, string | null>;
     setFieldValue: (apiId: string, value: unknown) => void;
     getFieldValue: (apiId: string) => unknown;
+    setFieldError: (apiId: string, message: string | null) => void;
+    getFieldError: (apiId: string) => string | null;
+    validateField: (apiId: string) => string | null;
   };
   fieldRenderer?: {
     field: FieldDefinition;
@@ -50,6 +56,10 @@ export interface AdminPluginMountContext {
     contentTypeApiId: string;
     entryId?: string;
     mode: 'create' | 'edit';
+    dirty: boolean;
+    validationError: string | null;
+    setValidationError: (message: string | null) => void;
+    validate: () => string | null;
   };
 }
 

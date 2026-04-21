@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Alert, Button, Card, Descriptions, Result, Skeleton, Space } from 'antd';
 import { useAdminExtensions } from '@/features/admin-extensions';
+import { reportAdminExtensionEvent } from '@/features/admin-extensions/telemetry';
 import {
   ModuleHostBoundary,
   PluginModuleHost,
@@ -55,6 +56,42 @@ export default function PluginNamespacePage() {
 
   const title = route?.title ?? (settingsPage ? `${pluginName} 设置` : '插件页面');
   const staleAfterRevisionChange = Boolean(revisionChange) && (!plugin || !contribution);
+  const contributionId = contribution?.id;
+  const contributionKind = contribution?.kind;
+  const contributionFullPath = contribution?.fullPath;
+
+  useEffect(() => {
+    if (!pluginName || isLoading) {
+      return;
+    }
+
+    if (contributionId && contributionKind && contributionFullPath) {
+      reportAdminExtensionEvent({
+        source: 'host',
+        level: 'info',
+        eventName: 'route.resolve.success',
+        message: `插件命名空间路由 ${pluginName} 已解析到 ${contributionId}`,
+        pluginName,
+        contributionId,
+        contributionKind,
+        fullPath: contributionFullPath,
+        detail: { tailPath },
+      });
+      return;
+    }
+
+    reportAdminExtensionEvent({
+      source: 'host',
+      level: staleAfterRevisionChange ? 'warning' : 'error',
+      eventName: 'route.resolve.miss',
+      message: staleAfterRevisionChange
+        ? `插件 ${pluginName} 的旧路由已经因 registry 更新失效`
+        : `插件 ${pluginName} 的命名空间路由未命中任何贡献`,
+      pluginName,
+      fullPath: location.pathname,
+      detail: { tailPath, staleAfterRevisionChange },
+    });
+  }, [contributionFullPath, contributionId, contributionKind, isLoading, location.pathname, pluginName, staleAfterRevisionChange, tailPath]);
 
   const descriptionItems = useMemo(
     () => [

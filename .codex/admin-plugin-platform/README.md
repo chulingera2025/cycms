@@ -1,6 +1,6 @@
 # CyCMS 后台插件前端扩展平台设计
 
-当前实施已经按三期里程碑重排，并已开始落地第一期。
+当前实施已经按三期里程碑完成落地。
 
 建议按以下顺序阅读：
 
@@ -52,15 +52,14 @@
 
 目标：把插件 UI 挂载合约、字段渲染器、扩展插槽、CSP/Integrity、遥测和运维可见性补齐到生产级闭环。
 
-当前已启动范围：
+当前已完成范围：
 
-1. 已建立 page-oriented / field-renderer-oriented / slot-oriented mount/unmount contract、typed host context、CSS 预加载和基础错误边界。
-2. `PluginNamespacePage` 已从占位页升级为真实的模块宿主页，会按 `moduleUrl` 加载同源插件 ESM 模块，并在页面卸载或贡献失效时执行清理。
-3. 内容编辑器中的 `custom` 字段类型现在会从 bootstrap registry 解析插件 field renderer，并通过宿主桥接把 `field`、`value`、`onChange`、`contentTypeApiId`、`entryId`、`mode` 传入插件模块；找不到渲染器或模块挂载失败时会自动回退到宿主原生编辑器。
-4. 内容编辑器右侧现在支持 `content.editor.sidebar` slot 扩展点，宿主会把当前 entry 值集合和 `setFieldValue/getFieldValue` 桥接给插件模块，并在无 slot 时保持原有单栏布局。
+1. 已建立 page-oriented / field-renderer-oriented / slot-oriented mount/unmount contract、typed host context、CSS 预加载、same-origin 资产校验与 `ModuleHostBoundary` 错误隔离。
+2. `PluginNamespacePage` 已从占位页升级为真实的模块宿主页，会按 `moduleUrl` 加载同源插件 ESM 模块，并在页面卸载或贡献失效时执行清理；自定义 settings 页面也走同一 namespace host。
+3. 内容编辑器中的 `custom` 字段类型现在会从 bootstrap registry 解析插件 field renderer，并通过宿主桥接把 `field`、`value`、`onChange`、`contentTypeApiId`、`entryId`、`mode`、dirty-state 与 validation error 传入插件模块；挂载失败时会自动回退到宿主原生编辑器。
+4. 内容编辑器右侧支持 `content.editor.sidebar` slot 扩展点，宿主会把当前 entry 值集合、dirty fields、validation errors 与 `setFieldValue/getFieldValue/setFieldError/validateField` 一并桥接给插件模块。
+5. 后端新增 `admin_extensions` 配置、report-only CSP 中间件、最近事件环形缓冲区与 `/api/v1/admin/extensions/events` 遥测入口；前端 loader 同时拒绝非同源 JS/CSS 资产。
+6. 宿主现在会对 module load/mount/unmount、route resolution、registry revision 变化和插件 install/enable/disable/uninstall 动作发出结构化遥测；插件管理页新增 diagnostics drawer，可查看 bootstrap diagnostics、最近事件与当前 CSP 策略。
+7. 已增加 Rust gateway/config 测试，以及基于 Vitest + jsdom + RTL 的前端测试，覆盖 loader same-origin、module host boundary、插件动作、命名空间解析、后台菜单消费、diagnostics UI 与 editor-state helper。
 
-三期剩余工作：
-
-1. 继续完善更细粒度的 update/unmount 协议，以及字段校验/dirty-state 桥接。
-2. 补齐 CSP / integrity / 遥测 / 诊断面板等生产级治理能力。
-3. 增加覆盖插件页面挂载、字段扩展点和生命周期回收的集成测试。
+三期结论：官方后台插件前端扩展平台已经具备生产可用的模块宿主、安全强化、遥测与运维可见性能力，并通过 Rust 与 Web 双侧验证。

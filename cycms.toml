@@ -79,3 +79,13 @@ audit_enabled = true
 # 插件存放目录
 directory = "plugins"
 wasm_enabled = true
+
+[admin_extensions]
+# 是否为后台与插件资产接口附加 same-origin CSP
+csp_enabled = true
+# 初始 rollout 默认走 report-only，确认稳定后可切到 false 强制执行
+csp_report_only = true
+# CSP report 和前端扩展遥测共用同一个接收端点
+csp_report_uri = "/api/v1/admin/extensions/events"
+# 诊断面板中保留的最近事件数
+recent_event_capacity = 200

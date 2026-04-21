@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { invalidateAdminExtensionQueries } from '@/features/admin-extensions/invalidation';
+import { reportAdminExtensionEvent } from '@/features/admin-extensions/telemetry';
 import { pluginsApi } from '@/lib/api';
 import { qk } from '@/lib/query-keys';
 
@@ -28,8 +29,26 @@ export function usePluginAction(action: PluginAction) {
           return;
       }
     },
-    onSuccess: async () => {
+    onSuccess: async (_, name) => {
       await invalidateAdminExtensionQueries(queryClient);
+      reportAdminExtensionEvent({
+        source: 'host',
+        level: 'info',
+        eventName: `plugin.${action}.success`,
+        message: `插件 ${name} ${action} 操作成功`,
+        pluginName: name,
+        detail: { action },
+      });
+    },
+    onError: (error, name) => {
+      reportAdminExtensionEvent({
+        source: 'host',
+        level: 'error',
+        eventName: `plugin.${action}.error`,
+        message: `插件 ${name} ${action} 操作失败：${error.message}`,
+        pluginName: name,
+        detail: { action },
+      });
     },
   });
 }

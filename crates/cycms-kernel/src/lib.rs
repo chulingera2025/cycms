@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use axum::extract::{Request, State};
-use axum::http::{HeaderValue, Method, header};
+use axum::http::{HeaderName, HeaderValue, Method, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use cycms_auth::AuthEngine;
@@ -225,6 +225,9 @@ impl Kernel {
         ));
 
         let api_router = cycms_api::build_router(api_state);
+        let admin_extension_security = Arc::new(cycms_api::build_admin_extension_security_state(
+            &ctx.config.admin_extensions,
+        ));
 
         // 静态文件：上传目录
         let uploads_dir = PathBuf::from(&ctx.config.media.upload_dir);
@@ -241,6 +244,10 @@ impl Kernel {
             .fallback_service(spa_service)
             .layer(
                 ServiceBuilder::new()
+                    .layer(middleware::from_fn_with_state(
+                        admin_extension_security,
+                        admin_extension_security_middleware,
+                    ))
                     .layer(middleware::from_fn(request_span_middleware))
                     .layer(middleware::from_fn_with_state(
                         rate_limit,
@@ -358,6 +365,9 @@ impl RateLimitState {
 }
 
 fn build_api_state(ctx: &AppContext) -> Arc<cycms_api::ApiState> {
+    let admin_extension_events = Arc::new(cycms_api::AdminExtensionEventStore::new(
+        ctx.config.admin_extensions.recent_event_capacity,
+    ));
     Arc::new(cycms_api::ApiState::new(
         Arc::clone(&ctx.config),
         Arc::clone(&ctx.auth_engine),
@@ -373,6 +383,7 @@ fn build_api_state(ctx: &AppContext) -> Arc<cycms_api::ApiState> {
         Arc::clone(&ctx.service_registry),
         Arc::clone(&ctx.native_runtime),
         Arc::clone(&ctx.wasm_runtime),
+        admin_extension_events,
     ))
 }
 
@@ -428,6 +439,27 @@ async fn rate_limit_middleware(
     }
 
     next.run(request).await
+}
+
+async fn admin_extension_security_middleware(
+    State(security): State<Arc<cycms_api::AdminExtensionSecurityState>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let mut response = next.run(request).await;
+
+    if security.csp_enabled && !security.csp_policy.is_empty() {
+        let header_name = if security.csp_report_only {
+            HeaderName::from_static("content-security-policy-report-only")
+        } else {
+            HeaderName::from_static("content-security-policy")
+        };
+        if let Ok(header_value) = HeaderValue::from_str(&security.csp_policy) {
+            response.headers_mut().insert(header_name, header_value);
+        }
+    }
+
+    response
 }
 
 fn is_sensitive_path(path: &str) -> bool {

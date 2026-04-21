@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode, header};
-use cycms_api::{ApiState, build_router};
+use cycms_api::{AdminExtensionEventStore, ApiState, build_router};
 use cycms_kernel::Kernel;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
@@ -36,7 +36,7 @@ connect_timeout_secs = 5
 idle_timeout_secs = 60
 
 [auth]
-jwt_secret = "test-jwt-secret"
+jwt_secret = "test-jwt-secret-with-32-byte-length"
 access_token_ttl_secs = 900
 refresh_token_ttl_secs = 3600
 
@@ -79,6 +79,9 @@ wasm_enabled = true
         Arc::clone(&ctx.service_registry),
         Arc::clone(&ctx.native_runtime),
         Arc::clone(&ctx.wasm_runtime),
+        Arc::new(AdminExtensionEventStore::new(
+            ctx.config.admin_extensions.recent_event_capacity,
+        )),
     ));
 
     build_router(state)
@@ -260,4 +263,73 @@ async fn creating_content_type_updates_openapi_document() {
     assert!(body["paths"]["/api/v1/content/article/{id}"].is_object());
     assert!(body["components"]["schemas"]["ContentEntryArticle"].is_object());
     assert!(body["components"]["schemas"]["ContentFieldsArticle"].is_object());
+}
+
+#[tokio::test]
+async fn admin_extension_diagnostics_include_security_state_and_recent_events() {
+    let app = build_test_app().await;
+    let (app, token) = bootstrap_admin(app).await;
+
+    let response = app
+        .clone()
+        .oneshot(authorized_empty_request(
+            Method::GET,
+            "/api/v1/admin/extensions/diagnostics",
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert!(body["revision"].is_string());
+    assert!(body["diagnostics"].as_array().is_some());
+    assert_eq!(body["recentEvents"], json!([]));
+    assert_eq!(
+        body["security"]["cspHeaderName"],
+        json!("Content-Security-Policy-Report-Only")
+    );
+    assert_eq!(body["security"]["cspEnabled"], json!(true));
+    assert_eq!(body["security"]["cspReportOnly"], json!(true));
+    assert!(body["security"]["cspPolicy"]
+        .as_str()
+        .unwrap()
+        .contains("default-src 'self'"));
+
+    let response = app
+        .clone()
+        .oneshot(authorized_json_request(
+            Method::POST,
+            "/api/v1/admin/extensions/events",
+            &token,
+            &json!({
+                "source": "host",
+                "level": "info",
+                "eventName": "module.mount.success",
+                "message": "blog route mounted",
+                "pluginName": "blog",
+                "contributionId": "route.blog.write",
+                "contributionKind": "route",
+                "fullPath": "/admin/x/blog/write",
+                "detail": { "sdkVersion": "1.0.0" }
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    let response = app
+        .oneshot(authorized_empty_request(
+            Method::GET,
+            "/api/v1/admin/extensions/diagnostics",
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    let events = body["recentEvents"].as_array().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["eventName"], json!("module.mount.success"));
+    assert_eq!(events[0]["pluginName"], json!("blog"));
+    assert_eq!(events[0]["contributionKind"], json!("route"));
 }

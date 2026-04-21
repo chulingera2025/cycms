@@ -33,6 +33,8 @@ pub struct AppConfig {
     pub observability: ObservabilityConfig,
     /// 插件目录与 Wasm 开关配置。
     pub plugins: PluginsConfig,
+    /// admin extension 模块宿主的安全与遥测配置。
+    pub admin_extensions: AdminExtensionsConfig,
 }
 
 /// HTTP 服务端口、限流与 CORS 相关配置。
@@ -199,6 +201,20 @@ pub struct PluginsConfig {
     pub wasm_enabled: bool,
 }
 
+/// admin extension 模块宿主的安全与遥测配置。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct AdminExtensionsConfig {
+    /// 是否为后台响应附加 same-origin CSP。
+    pub csp_enabled: bool,
+    /// 是否以 report-only 方式下发 CSP。
+    pub csp_report_only: bool,
+    /// CSP 违规上报地址；空字符串表示不发送 report-uri。
+    pub csp_report_uri: String,
+    /// 进程内保留的最近 admin extension 事件条数。
+    pub recent_event_capacity: usize,
+}
+
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
@@ -314,6 +330,17 @@ impl Default for PluginsConfig {
         Self {
             directory: "plugins".to_owned(),
             wasm_enabled: true,
+        }
+    }
+}
+
+impl Default for AdminExtensionsConfig {
+    fn default() -> Self {
+        Self {
+            csp_enabled: true,
+            csp_report_only: true,
+            csp_report_uri: "/api/v1/admin/extensions/events".to_owned(),
+            recent_event_capacity: 200,
         }
     }
 }
@@ -505,7 +532,8 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
 
     use super::{
-        AppConfig, DEFAULT_CONFIG_FILE, DatabaseDriver, DeleteMode, Error, LogFormat,
+        AdminExtensionsConfig, AppConfig, DEFAULT_CONFIG_FILE, DatabaseDriver, DeleteMode, Error,
+        LogFormat,
         apply_env_overrides_from_iter,
     };
 
@@ -574,6 +602,7 @@ wasm_enabled = false
         assert_eq!(config.observability.level, "debug");
         assert!(!config.observability.audit_enabled);
         assert!(!config.plugins.wasm_enabled);
+        assert_eq!(config.admin_extensions, AdminExtensionsConfig::default());
     }
 
     #[test]
@@ -618,6 +647,11 @@ wasm_enabled = false
                 ("CYCMS__EVENTS__HANDLER_TIMEOUT_SECS", "2"),
                 ("CYCMS__OBSERVABILITY__AUDIT_ENABLED", "false"),
                 ("CYCMS__PLUGINS__WASM_ENABLED", "false"),
+                ("CYCMS__ADMIN_EXTENSIONS__CSP_REPORT_ONLY", "false"),
+                (
+                    "CYCMS__ADMIN_EXTENSIONS__RECENT_EVENT_CAPACITY",
+                    "64",
+                ),
             ],
         )
         .unwrap();
@@ -633,6 +667,17 @@ wasm_enabled = false
         assert_eq!(config.events.handler_timeout_secs, 2);
         assert!(!config.observability.audit_enabled);
         assert!(!config.plugins.wasm_enabled);
+        assert!(!config.admin_extensions.csp_report_only);
+        assert_eq!(config.admin_extensions.recent_event_capacity, 64);
+    }
+
+    #[test]
+    fn admin_extension_defaults_enable_report_only_csp_and_recent_events() {
+        let config = AppConfig::default();
+        assert!(config.admin_extensions.csp_enabled);
+        assert!(config.admin_extensions.csp_report_only);
+        assert_eq!(config.admin_extensions.csp_report_uri, "/api/v1/admin/extensions/events");
+        assert_eq!(config.admin_extensions.recent_event_capacity, 200);
     }
 
     #[test]

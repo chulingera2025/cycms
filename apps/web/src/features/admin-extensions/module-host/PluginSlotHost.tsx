@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Alert, Skeleton } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { reportAdminExtensionEvent } from '@/features/admin-extensions/telemetry';
 import { api } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import { loadAdminPluginModule, retainPluginStyles } from './loader';
@@ -21,7 +22,12 @@ interface PluginSlotHostProps {
   styles: string[];
   contentTypeApiId: string;
   values: Record<string, unknown>;
+  dirtyFields: string[];
+  validationErrors: Record<string, string | null>;
   setFieldValue: (apiId: string, value: unknown) => void;
+  setFieldError: (apiId: string, message: string | null) => void;
+  getFieldError: (apiId: string) => string | null;
+  validateField: (apiId: string) => string | null;
   entryId?: string;
   mode: 'create' | 'edit';
 }
@@ -55,7 +61,12 @@ export function PluginSlotHost({
   styles,
   contentTypeApiId,
   values,
+  dirtyFields,
+  validationErrors,
   setFieldValue,
+  setFieldError,
+  getFieldError,
+  validateField,
   entryId,
   mode,
 }: PluginSlotHostProps) {
@@ -72,6 +83,11 @@ export function PluginSlotHost({
   const contentTypeApiIdRef = useRef(contentTypeApiId);
   const entryIdRef = useRef(entryId);
   const modeRef = useRef(mode);
+  const dirtyFieldsRef = useRef(dirtyFields);
+  const validationErrorsRef = useRef(validationErrors);
+  const setFieldErrorRef = useRef(setFieldError);
+  const getFieldErrorRef = useRef(getFieldError);
+  const validateFieldRef = useRef(validateField);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
@@ -84,7 +100,12 @@ export function PluginSlotHost({
     contentTypeApiIdRef.current = contentTypeApiId;
     entryIdRef.current = entryId;
     modeRef.current = mode;
-  }, [contentTypeApiId, entryId, mode, setFieldValue, values]);
+    dirtyFieldsRef.current = dirtyFields;
+    validationErrorsRef.current = validationErrors;
+    setFieldErrorRef.current = setFieldError;
+    getFieldErrorRef.current = getFieldError;
+    validateFieldRef.current = validateField;
+  }, [contentTypeApiId, dirtyFields, entryId, getFieldError, mode, setFieldError, setFieldValue, validateField, validationErrors, values]);
 
   const buildContext = useCallback(
     (container: HTMLElement): AdminPluginMountContext => ({
@@ -116,11 +137,23 @@ export function PluginSlotHost({
         entryId: entryIdRef.current,
         mode: modeRef.current,
         values: valuesRef.current,
+        dirtyFields: dirtyFieldsRef.current,
+        isDirty: dirtyFieldsRef.current.length > 0,
+        validationErrors: validationErrorsRef.current,
         setFieldValue(apiId, value) {
           setFieldValueRef.current(apiId, value);
         },
         getFieldValue(apiId) {
           return valuesRef.current[apiId];
+        },
+        setFieldError(apiId, message) {
+          setFieldErrorRef.current(apiId, message);
+        },
+        getFieldError(apiId) {
+          return getFieldErrorRef.current(apiId);
+        },
+        validateField(apiId) {
+          return validateFieldRef.current(apiId);
         },
       },
     }),
@@ -190,6 +223,17 @@ export function PluginSlotHost({
       container.innerHTML = '';
       setIsLoading(true);
       setError(null);
+      reportAdminExtensionEvent({
+        source: 'host',
+        level: 'info',
+        eventName: 'module.load.start',
+        message: `开始加载 slot ${pluginName}:${contributionId}`,
+        pluginName,
+        contributionId,
+        contributionKind: 'slot',
+        fullPath: location.pathname,
+        detail: { moduleUrl, slotId },
+      });
 
       try {
         releaseStyles = await retainPluginStyles(styles);
@@ -216,11 +260,31 @@ export function PluginSlotHost({
         }
 
         setIsLoading(false);
+        reportAdminExtensionEvent({
+          source: 'host',
+          level: 'info',
+          eventName: 'module.mount.success',
+          message: `slot ${pluginName}:${contributionId} 已挂载`,
+          pluginName,
+          contributionId,
+          contributionKind: 'slot',
+          fullPath: location.pathname,
+        });
       } catch (mountError) {
         const nextError = asError(mountError);
         logger.error('slot 模块加载或挂载失败', nextError);
         setError(nextError);
         setIsLoading(false);
+        reportAdminExtensionEvent({
+          source: 'host',
+          level: 'error',
+          eventName: 'module.mount.error',
+          message: `slot ${pluginName}:${contributionId} 挂载失败：${nextError.message}`,
+          pluginName,
+          contributionId,
+          contributionKind: 'slot',
+          fullPath: location.pathname,
+        });
         await runCleanup();
       }
     }
@@ -229,9 +293,19 @@ export function PluginSlotHost({
 
     return () => {
       disposed = true;
+      reportAdminExtensionEvent({
+        source: 'host',
+        level: 'info',
+        eventName: 'module.unmount.start',
+        message: `slot ${pluginName}:${contributionId} 开始卸载`,
+        pluginName,
+        contributionId,
+        contributionKind: 'slot',
+        fullPath: location.pathname,
+      });
       void runCleanup();
     };
-  }, [buildContext, logger, moduleUrl, styleKey, styles]);
+  }, [buildContext, contributionId, location.pathname, logger, moduleUrl, pluginName, slotId, styleKey, styles]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -243,7 +317,7 @@ export function PluginSlotHost({
     const nextContext = buildContext(container);
     currentContextRef.current = nextContext;
     void mountHandle.update(nextContext);
-  }, [buildContext, contentTypeApiId, entryId, mode, values]);
+  }, [buildContext, contentTypeApiId, dirtyFields, entryId, mode, validationErrors, values]);
 
   return (
     <div className="space-y-2 rounded border border-border bg-surface p-3">

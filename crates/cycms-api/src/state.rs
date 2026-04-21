@@ -15,6 +15,8 @@ use cycms_publish::PublishManager;
 use cycms_revision::RevisionManager;
 use cycms_settings::SettingsManager;
 
+use crate::SharedAdminExtensionEventStore;
+
 #[derive(Clone)]
 pub struct ApiState {
     pub config: Arc<AppConfig>,
@@ -31,6 +33,7 @@ pub struct ApiState {
     pub service_registry: Arc<ServiceRegistry>,
     pub native_runtime: Arc<NativePluginRuntime>,
     pub wasm_runtime: Arc<WasmPluginRuntime>,
+    pub admin_extension_events: SharedAdminExtensionEventStore,
 }
 
 impl ApiState {
@@ -51,6 +54,7 @@ impl ApiState {
         service_registry: Arc<ServiceRegistry>,
         native_runtime: Arc<NativePluginRuntime>,
         wasm_runtime: Arc<WasmPluginRuntime>,
+        admin_extension_events: SharedAdminExtensionEventStore,
     ) -> Self {
         Self {
             config,
@@ -67,6 +71,7 @@ impl ApiState {
             service_registry,
             native_runtime,
             wasm_runtime,
+            admin_extension_events,
         }
     }
 }

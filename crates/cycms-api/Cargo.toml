@@ -28,6 +28,7 @@ cycms-plugin-native = { workspace = true }
 cycms-plugin-wasm = { workspace = true }
 cycms-settings = { workspace = true }
 cycms-openapi = { workspace = true }
+cycms-observability = { workspace = true }
 
 [dev-dependencies]
 cycms-db = { workspace = true }

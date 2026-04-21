@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Alert, Skeleton } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { reportAdminExtensionEvent } from '@/features/admin-extensions/telemetry';
 import { api } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import { loadAdminPluginModule, retainPluginStyles } from './loader';
@@ -113,6 +114,17 @@ export function PluginModuleHost({
       setIsLoading(true);
       setError(null);
       setVersionWarning(null);
+      reportAdminExtensionEvent({
+        source: 'host',
+        level: 'info',
+        eventName: 'module.load.start',
+        message: `开始加载插件模块 ${pluginName}:${contributionId}`,
+        pluginName,
+        contributionId,
+        contributionKind,
+        fullPath,
+        detail: { moduleUrl },
+      });
 
       try {
         releaseStyles = await retainPluginStyles(styles);
@@ -169,11 +181,31 @@ export function PluginModuleHost({
         }
 
         setIsLoading(false);
+        reportAdminExtensionEvent({
+          source: 'host',
+          level: 'info',
+          eventName: 'module.mount.success',
+          message: `插件模块 ${pluginName}:${contributionId} 已挂载`,
+          pluginName,
+          contributionId,
+          contributionKind,
+          fullPath,
+        });
       } catch (mountError) {
         const nextError = asError(mountError);
         logger.error('插件模块加载或挂载失败', nextError);
         setError(nextError);
         setIsLoading(false);
+        reportAdminExtensionEvent({
+          source: 'host',
+          level: 'error',
+          eventName: 'module.mount.error',
+          message: `插件模块 ${pluginName}:${contributionId} 挂载失败：${nextError.message}`,
+          pluginName,
+          contributionId,
+          contributionKind,
+          fullPath,
+        });
         await runCleanup();
       }
     }
@@ -182,6 +214,16 @@ export function PluginModuleHost({
 
     return () => {
       disposed = true;
+      reportAdminExtensionEvent({
+        source: 'host',
+        level: 'info',
+        eventName: 'module.unmount.start',
+        message: `插件模块 ${pluginName}:${contributionId} 开始卸载`,
+        pluginName,
+        contributionId,
+        contributionKind,
+        fullPath,
+      });
       void runCleanup();
     };
   }, [

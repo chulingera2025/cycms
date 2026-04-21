@@ -1,6 +1,7 @@
 import { api } from './client';
 import type {
   AdminExtensionBootstrap,
+  AdminExtensionClientEventPayload,
   AdminExtensionDiagnostics,
 } from '@/types';
 
@@ -13,5 +14,9 @@ export const adminExtensionsApi = {
 
   diagnostics(): Promise<AdminExtensionDiagnostics> {
     return api.get<AdminExtensionDiagnostics>(`${BASE}/diagnostics`);
+  },
+
+  recordEvent(payload: AdminExtensionClientEventPayload): Promise<void> {
+    return api.post<void>(`${BASE}/events`, payload);
   },
 };

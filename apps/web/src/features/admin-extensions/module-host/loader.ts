@@ -9,6 +9,17 @@ interface StyleRecord {
 const moduleCache = new Map<string, Promise<AdminPluginModule>>();
 const styleRegistry = new Map<string, StyleRecord>();
 
+function ensureSameOriginAssetUrl(assetUrl: string) {
+  const normalized = new URL(assetUrl, window.location.origin);
+  if (normalized.origin !== window.location.origin) {
+    throw new Error(`插件资产 ${assetUrl} 不是同源 URL，宿主已拒绝加载`);
+  }
+  if (normalized.protocol !== 'http:' && normalized.protocol !== 'https:') {
+    throw new Error(`插件资产 ${assetUrl} 使用了不受支持的协议 ${normalized.protocol}`);
+  }
+  return normalized.toString();
+}
+
 function normalizeImportedModule(moduleUrl: string, imported: unknown): AdminPluginModule {
   const namespace =
     imported && typeof imported === 'object'
@@ -36,7 +47,8 @@ function normalizeImportedModule(moduleUrl: string, imported: unknown): AdminPlu
 }
 
 function ensureStyle(url: string): StyleRecord {
-  const existing = styleRegistry.get(url);
+  const normalizedUrl = ensureSameOriginAssetUrl(url);
+  const existing = styleRegistry.get(normalizedUrl);
   if (existing) {
     existing.refs += 1;
     return existing;
@@ -44,8 +56,8 @@ function ensureStyle(url: string): StyleRecord {
 
   const element = document.createElement('link');
   element.rel = 'stylesheet';
-  element.href = url;
-  element.dataset.cycmsPluginStyle = url;
+  element.href = normalizedUrl;
+  element.dataset.cycmsPluginStyle = normalizedUrl;
 
   const ready = new Promise<void>((resolve, reject) => {
     element.addEventListener('load', () => resolve(), { once: true });
@@ -59,12 +71,13 @@ function ensureStyle(url: string): StyleRecord {
   document.head.appendChild(element);
 
   const record = { element, refs: 1, ready };
-  styleRegistry.set(url, record);
+  styleRegistry.set(normalizedUrl, record);
   return record;
 }
 
 function releaseStyle(url: string) {
-  const record = styleRegistry.get(url);
+  const normalizedUrl = ensureSameOriginAssetUrl(url);
+  const record = styleRegistry.get(normalizedUrl);
   if (!record) {
     return;
   }
@@ -72,12 +85,12 @@ function releaseStyle(url: string) {
   record.refs -= 1;
   if (record.refs <= 0) {
     record.element.remove();
-    styleRegistry.delete(url);
+    styleRegistry.delete(normalizedUrl);
   }
 }
 
 export async function retainPluginStyles(styleUrls: string[]) {
-  const urls = [...new Set(styleUrls)];
+  const urls = [...new Set(styleUrls.map((url) => ensureSameOriginAssetUrl(url)))];
   if (!urls.length) {
     return () => undefined;
   }
@@ -105,18 +118,19 @@ export async function retainPluginStyles(styleUrls: string[]) {
 }
 
 export async function loadAdminPluginModule(moduleUrl: string) {
-  const cached = moduleCache.get(moduleUrl);
+  const normalizedUrl = ensureSameOriginAssetUrl(moduleUrl);
+  const cached = moduleCache.get(normalizedUrl);
   if (cached) {
     return cached;
   }
 
-  const loading = import(/* @vite-ignore */ moduleUrl)
-    .then((imported) => normalizeImportedModule(moduleUrl, imported))
+  const loading = import(/* @vite-ignore */ normalizedUrl)
+    .then((imported) => normalizeImportedModule(normalizedUrl, imported))
     .catch((error) => {
-      moduleCache.delete(moduleUrl);
+      moduleCache.delete(normalizedUrl);
       throw error;
     });
 
-  moduleCache.set(moduleUrl, loading);
+  moduleCache.set(normalizedUrl, loading);
   return loading;
 }
