@@ -43,10 +43,8 @@ export const contentApi = {
   },
 
   delete(typeApiId: string, id: string, mode?: 'soft' | 'hard'): Promise<void> {
-    const params = mode ? { mode } : undefined;
-    return api.get<void>(`${BASE}/${typeApiId}/${id}`, params).then(() =>
-      api.delete(`${BASE}/${typeApiId}/${id}`),
-    );
+    const qs = mode ? `?mode=${mode}` : '';
+    return api.delete<void>(`${BASE}/${typeApiId}/${id}${qs}`);
   },
 
   publish(typeApiId: string, id: string): Promise<ContentEntry> {
