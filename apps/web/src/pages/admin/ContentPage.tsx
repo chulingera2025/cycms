@@ -1,317 +1,293 @@
-import { useState, useMemo } from 'react';
-import { useAsync } from '@/hooks/useAsync';
-import { contentTypesApi, contentApi } from '@/lib/api';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
-import type { ContentEntry, ContentTypeDefinition, ContentStatus } from '@/types';
+import { useMemo, useState } from 'react';
+import { Button, Input, Popconfirm, Select, Space, Table, Tag } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import { History, Plus } from 'lucide-react';
+import { EntryEditor } from '@/features/content/EntryEditor';
+import { RevisionDrawer } from '@/features/content/RevisionDrawer';
+import {
+  useContentList,
+  useCreateEntry,
+  useDeleteEntry,
+  usePublishEntry,
+  useUnpublishEntry,
+  useUpdateEntry,
+} from '@/features/content/hooks';
+import { useContentTypes } from '@/features/content-types/hooks';
+import { toast } from '@/lib/toast';
+import type { ContentEntry, ContentStatus } from '@/types';
+
+const STATUS_COLOR: Record<ContentStatus, string> = {
+  draft: 'gold',
+  published: 'green',
+  archived: 'default',
+};
+
+const STATUS_LABEL: Record<ContentStatus, string> = {
+  draft: '草稿',
+  published: '已发布',
+  archived: '已归档',
+};
 
 export default function ContentPage() {
-  const { data: types, loading: typesLoading } = useAsync(() => contentTypesApi.list(), []);
+  const { data: types = [], isLoading: typesLoading } = useContentTypes();
   const [selectedType, setSelectedType] = useState<string>('');
-  const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<ContentStatus | ''>('');
-  const [search, setSearch] = useState('');
+  const [slugSearch, setSlugSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  const [editorOpen, setEditorOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<ContentEntry | null>(null);
-  const [creating, setCreating] = useState(false);
 
-  const typeApiId = selectedType || types?.[0]?.api_id || '';
+  const [revisionOpen, setRevisionOpen] = useState(false);
+  const [revisionEntryId, setRevisionEntryId] = useState<string>('');
+
+  const typeApiId = selectedType || types[0]?.api_id || '';
+  const currentType = useMemo(
+    () => types.find((t) => t.api_id === typeApiId) ?? null,
+    [types, typeApiId],
+  );
+
   const params = useMemo(() => {
-    const p: Record<string, string> = { page: String(page), pageSize: '20' };
-    if (statusFilter) p['status'] = statusFilter;
-    if (search) p['filter[slug][contains]'] = search;
+    const p: Record<string, string> = {
+      page: String(page),
+      pageSize: String(pageSize),
+    };
+    if (statusFilter) p.status = statusFilter;
+    if (slugSearch) p['filter[slug][contains]'] = slugSearch;
     return p;
-  }, [page, statusFilter, search]);
+  }, [page, pageSize, statusFilter, slugSearch]);
 
-  const {
-    data: entries,
-    loading: entriesLoading,
-    refetch,
-  } = useAsync(
-    () => (typeApiId ? contentApi.list(typeApiId, params) : Promise.resolve(null)),
-    [typeApiId, params],
+  const { data: entries, isLoading: entriesLoading } = useContentList(
+    typeApiId,
+    params,
   );
 
-  const currentType = types?.find((t) => t.api_id === typeApiId);
+  const create = useCreateEntry(typeApiId);
+  const update = useUpdateEntry(typeApiId);
+  const del = useDeleteEntry(typeApiId);
+  const publish = usePublishEntry(typeApiId);
+  const unpublish = useUnpublishEntry(typeApiId);
 
-  if (typesLoading) return <LoadingSpinner />;
-
-  return (
-    <div className="page">
-      <div className="page-header">
-        <h1>内容管理</h1>
-        <div className="header-actions">
-          <select value={typeApiId} onChange={(e) => { setSelectedType(e.target.value); setPage(1); }}>
-            {types?.map((t) => (
-              <option key={t.api_id} value={t.api_id}>{t.name}</option>
-            ))}
-          </select>
-          <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as ContentStatus | ''); setPage(1); }}>
-            <option value="">全部状态</option>
-            <option value="draft">草稿</option>
-            <option value="published">已发布</option>
-            <option value="archived">已归档</option>
-          </select>
-          <input placeholder="搜索 slug..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          <button className="btn btn-primary" onClick={() => setCreating(true)}>
-            新建
-          </button>
-        </div>
-      </div>
-
-      {creating && currentType && (
-        <EntryForm
-          contentType={currentType}
-          onCancel={() => setCreating(false)}
-          onSave={async (data) => {
-            await contentApi.create(typeApiId, data);
-            setCreating(false);
-            refetch();
-          }}
-        />
-      )}
-
-      {editingEntry && currentType && (
-        <EntryForm
-          contentType={currentType}
-          initial={editingEntry}
-          onCancel={() => setEditingEntry(null)}
-          onSave={async (data) => {
-            await contentApi.update(typeApiId, editingEntry.id, data);
-            setEditingEntry(null);
-            refetch();
-          }}
-        />
-      )}
-
-      {entriesLoading ? (
-        <LoadingSpinner />
-      ) : (
-        <>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Slug</th>
-                <th>状态</th>
-                <th>创建时间</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries?.data.map((entry) => (
-                <tr key={entry.id}>
-                  <td title={entry.id}>{entry.id.slice(0, 8)}...</td>
-                  <td>{entry.slug ?? '—'}</td>
-                  <td>
-                    <span className={`status-badge status-${entry.status}`}>
-                      {entry.status}
-                    </span>
-                  </td>
-                  <td>{new Date(entry.created_at).toLocaleString()}</td>
-                  <td className="action-cell">
-                    <button className="btn btn-sm" onClick={() => setEditingEntry(entry)}>
-                      编辑
-                    </button>
-                    {entry.status === 'draft' && (
-                      <button
-                        className="btn btn-sm btn-success"
-                        onClick={async () => {
-                          await contentApi.publish(typeApiId, entry.id);
-                          refetch();
-                        }}
-                      >
-                        发布
-                      </button>
-                    )}
-                    {entry.status === 'published' && (
-                      <button
-                        className="btn btn-sm btn-warning"
-                        onClick={async () => {
-                          await contentApi.unpublish(typeApiId, entry.id);
-                          refetch();
-                        }}
-                      >
-                        撤回
-                      </button>
-                    )}
-                    <button
-                      className="btn btn-sm btn-danger"
-                      onClick={async () => {
-                        if (confirm('确定删除？')) {
-                          await contentApi.delete(typeApiId, entry.id);
-                          refetch();
-                        }
-                      }}
-                    >
-                      删除
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {entries && entries.meta.page_count > 1 && (
-            <div className="pagination">
-              <button disabled={page <= 1} onClick={() => setPage(page - 1)}>
-                上一页
-              </button>
-              <span>
-                {entries.meta.page} / {entries.meta.page_count}（共 {entries.meta.total} 条）
-              </span>
-              <button
-                disabled={page >= entries.meta.page_count}
-                onClick={() => setPage(page + 1)}
-              >
-                下一页
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-// ── Entry Form ───────────────────────────────────────────────────────────
-
-function EntryForm({
-  contentType,
-  initial,
-  onCancel,
-  onSave,
-}: {
-  contentType: ContentTypeDefinition;
-  initial?: ContentEntry;
-  onCancel: () => void;
-  onSave: (data: { data: Record<string, unknown>; slug?: string }) => Promise<void>;
-}) {
-  const [slug, setSlug] = useState(initial?.slug ?? '');
-  const [fields, setFields] = useState<Record<string, unknown>>(
-    initial ? (initial.fields as Record<string, unknown>) : {},
-  );
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  function updateField(apiId: string, value: unknown) {
-    setFields({ ...fields, [apiId]: value });
+  function openCreate() {
+    setEditingEntry(null);
+    setEditorOpen(true);
+  }
+  function openEdit(e: ContentEntry) {
+    setEditingEntry(e);
+    setEditorOpen(true);
+  }
+  function openRevisions(e: ContentEntry) {
+    setRevisionEntryId(e.id);
+    setRevisionOpen(true);
   }
 
-  async function handleSubmit() {
-    setSaving(true);
-    setError('');
-    try {
-      await onSave({ data: fields, slug: slug || undefined });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '保存失败');
-    } finally {
-      setSaving(false);
+  async function handleSubmit(payload: {
+    data: Record<string, unknown>;
+    slug?: string | null;
+  }) {
+    if (editingEntry) {
+      await update.mutateAsync({
+        id: editingEntry.id,
+        input: { data: payload.data, slug: payload.slug },
+      });
+      toast.success('已更新');
+    } else {
+      await create.mutateAsync({
+        data: payload.data,
+        slug: payload.slug ?? undefined,
+      });
+      toast.success('已创建');
     }
+    setEditorOpen(false);
   }
+
+  const columns: ColumnsType<ContentEntry> = [
+    {
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 120,
+      render: (v: string) => (
+        <code className="font-mono text-xs text-text-muted" title={v}>
+          {v.slice(0, 8)}
+        </code>
+      ),
+    },
+    {
+      title: 'Slug',
+      dataIndex: 'slug',
+      key: 'slug',
+      render: (v?: string) =>
+        v ? <code className="font-mono text-xs">{v}</code> : <span className="text-text-muted">—</span>,
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 110,
+      render: (s: ContentStatus) => (
+        <Tag color={STATUS_COLOR[s]}>{STATUS_LABEL[s]}</Tag>
+      ),
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      render: (v: string) => new Date(v).toLocaleString('zh-CN'),
+      responsive: ['md'],
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 280,
+      render: (_: unknown, row) => (
+        <Space size="small" wrap>
+          <Button size="small" onClick={() => openEdit(row)}>
+            编辑
+          </Button>
+          <Button
+            size="small"
+            icon={<History size={12} />}
+            onClick={() => openRevisions(row)}
+          >
+            版本
+          </Button>
+          {row.status === 'draft' && (
+            <Popconfirm
+              title="发布内容"
+              description="发布后可被公开访问。"
+              okText="发布"
+              cancelText="取消"
+              onConfirm={async () => {
+                await publish.mutateAsync(row.id);
+                toast.success('已发布');
+              }}
+            >
+              <Button size="small" type="primary">
+                发布
+              </Button>
+            </Popconfirm>
+          )}
+          {row.status === 'published' && (
+            <Popconfirm
+              title="撤回发布"
+              description="撤回后将回到草稿状态。"
+              okText="撤回"
+              cancelText="取消"
+              onConfirm={async () => {
+                await unpublish.mutateAsync(row.id);
+                toast.success('已撤回');
+              }}
+            >
+              <Button size="small">撤回</Button>
+            </Popconfirm>
+          )}
+          <Popconfirm
+            title="删除内容"
+            description="此操作不可撤销。"
+            okButtonProps={{ danger: true }}
+            okText="删除"
+            cancelText="取消"
+            onConfirm={async () => {
+              await del.mutateAsync(row.id);
+              toast.success('已删除');
+            }}
+          >
+            <Button size="small" danger>
+              删除
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
 
   return (
-    <div className="form-overlay">
-      <div className="form-card wide">
-        <h2>{initial ? '编辑内容' : '新建内容'}</h2>
-        {error && <div className="form-error">{error}</div>}
-
-        <div className="form-group">
-          <label>Slug</label>
-          <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="可选" />
-        </div>
-
-        {contentType.fields.map((fd) => (
-          <div key={fd.api_id} className="form-group">
-            <label>
-              {fd.name}
-              {fd.required && <span className="required">*</span>}
-              <small> ({fd.field_type})</small>
-            </label>
-            <FieldInput
-              fieldDef={fd}
-              value={fields[fd.api_id]}
-              onChange={(v) => updateField(fd.api_id, v)}
-            />
-          </div>
-        ))}
-
-        <div className="form-actions">
-          <button className="btn" onClick={onCancel}>取消</button>
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={saving}>
-            {saving ? '保存中...' : '保存'}
-          </button>
-        </div>
+    <div className="p-6">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="m-0 text-xl font-semibold text-text">内容管理</h1>
+        <Space wrap size="small">
+          <Select
+            placeholder="选择内容类型"
+            style={{ width: 200 }}
+            value={typeApiId || undefined}
+            loading={typesLoading}
+            onChange={(v) => {
+              setSelectedType(v);
+              setPage(1);
+            }}
+            options={types.map((t) => ({ value: t.api_id, label: t.name }))}
+          />
+          <Select
+            placeholder="全部状态"
+            style={{ width: 140 }}
+            value={statusFilter || undefined}
+            allowClear
+            onChange={(v) => {
+              setStatusFilter((v as ContentStatus) ?? '');
+              setPage(1);
+            }}
+            options={[
+              { value: 'draft', label: '草稿' },
+              { value: 'published', label: '已发布' },
+              { value: 'archived', label: '已归档' },
+            ]}
+          />
+          <Input.Search
+            placeholder="搜索 slug"
+            allowClear
+            style={{ width: 200 }}
+            onSearch={(v) => {
+              setSlugSearch(v);
+              setPage(1);
+            }}
+          />
+          <Button
+            type="primary"
+            icon={<Plus size={14} />}
+            onClick={openCreate}
+            disabled={!currentType}
+          >
+            新建
+          </Button>
+        </Space>
       </div>
+
+      <Table<ContentEntry>
+        rowKey="id"
+        columns={columns}
+        dataSource={entries?.data ?? []}
+        loading={entriesLoading}
+        scroll={{ x: 'max-content' }}
+        pagination={{
+          current: page,
+          pageSize,
+          total: entries?.meta.total ?? 0,
+          showSizeChanger: true,
+          pageSizeOptions: [10, 20, 50, 100],
+          onChange: (p, ps) => {
+            setPage(p);
+            setPageSize(ps);
+          },
+        }}
+      />
+
+      <EntryEditor
+        open={editorOpen}
+        contentType={currentType}
+        initial={editingEntry}
+        onClose={() => setEditorOpen(false)}
+        onSubmit={handleSubmit}
+        loading={create.isPending || update.isPending}
+      />
+
+      <RevisionDrawer
+        open={revisionOpen}
+        typeApiId={typeApiId}
+        entryId={revisionEntryId}
+        onClose={() => setRevisionOpen(false)}
+      />
     </div>
   );
-}
-
-function FieldInput({
-  fieldDef,
-  value,
-  onChange,
-}: {
-  fieldDef: { field_type: string };
-  value: unknown;
-  onChange: (v: unknown) => void;
-}) {
-  switch (fieldDef.field_type) {
-    case 'boolean':
-      return (
-        <input
-          type="checkbox"
-          checked={!!value}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-      );
-    case 'integer':
-    case 'float':
-      return (
-        <input
-          type="number"
-          value={value != null ? String(value) : ''}
-          onChange={(e) =>
-            onChange(
-              fieldDef.field_type === 'integer'
-                ? parseInt(e.target.value, 10) || 0
-                : parseFloat(e.target.value) || 0,
-            )
-          }
-        />
-      );
-    case 'text':
-    case 'richtext':
-      return (
-        <textarea
-          value={typeof value === 'string' ? value : ''}
-          onChange={(e) => onChange(e.target.value)}
-          rows={5}
-        />
-      );
-    case 'datetime':
-      return (
-        <input
-          type="datetime-local"
-          value={typeof value === 'string' ? value.slice(0, 16) : ''}
-          onChange={(e) => onChange(e.target.value ? new Date(e.target.value).toISOString() : null)}
-        />
-      );
-    case 'json':
-      return (
-        <textarea
-          value={typeof value === 'string' ? value : JSON.stringify(value ?? '', null, 2)}
-          onChange={(e) => {
-            try { onChange(JSON.parse(e.target.value)); } catch { /* keep raw */ }
-          }}
-          rows={4}
-        />
-      );
-    default:
-      return (
-        <input
-          type="text"
-          value={typeof value === 'string' ? value : (value != null ? String(value) : '')}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      );
-  }
 }
