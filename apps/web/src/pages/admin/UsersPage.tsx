@@ -1,198 +1,149 @@
 import { useState } from 'react';
-import { useAsync } from '@/hooks/useAsync';
-import { usersApi, rolesApi } from '@/lib/api';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
-import type { User, CreateUserInput, Role } from '@/types';
+import { Button, Popconfirm, Space, Switch, Table, Tag } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import { Plus } from 'lucide-react';
+import { UserForm } from '@/features/users/UserForm';
+import {
+  useCreateUser,
+  useDeleteUser,
+  useUpdateUser,
+  useUsers,
+} from '@/features/users/hooks';
+import { toast } from '@/lib/toast';
+import type { CreateUserInput, UpdateUserInput, User } from '@/types';
 
 export default function UsersPage() {
-  const { data: users, loading, error, refetch } = useAsync(() => usersApi.list(), []);
-  const { data: roles } = useAsync(() => rolesApi.list(), []);
-  const [creating, setCreating] = useState(false);
+  const { data: users = [], isLoading } = useUsers();
+  const create = useCreateUser();
+  const update = useUpdateUser();
+  const del = useDeleteUser();
+  const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <div className="page-error">加载失败: {error.message}</div>;
-
-  return (
-    <div className="page">
-      <div className="page-header">
-        <h1>用户管理</h1>
-        <button className="btn btn-primary" onClick={() => setCreating(true)}>
-          新建用户
-        </button>
-      </div>
-
-      {creating && (
-        <UserForm
-          roles={roles ?? []}
-          onCancel={() => setCreating(false)}
-          onSave={async (data) => {
-            await usersApi.create(data);
-            setCreating(false);
-            refetch();
-          }}
-        />
-      )}
-
-      {editing && (
-        <UserForm
-          initial={editing}
-          roles={roles ?? []}
-          onCancel={() => setEditing(null)}
-          onSave={async (data) => {
-            await usersApi.update(editing.id, data);
-            setEditing(null);
-            refetch();
-          }}
-        />
-      )}
-
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>用户名</th>
-            <th>邮箱</th>
-            <th>角色</th>
-            <th>状态</th>
-            <th>创建时间</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users?.map((u) => (
-            <tr key={u.id}>
-              <td>{u.username}</td>
-              <td>{u.email}</td>
-              <td>{u.roles.join(', ')}</td>
-              <td>{u.is_active ? '活跃' : '已禁用'}</td>
-              <td>{new Date(u.created_at).toLocaleString()}</td>
-              <td className="action-cell">
-                <button className="btn btn-sm" onClick={() => setEditing(u)}>编辑</button>
-                <button
-                  className="btn btn-sm btn-danger"
-                  onClick={async () => {
-                    if (confirm(`确定删除 ${u.username}？`)) {
-                      await usersApi.delete(u.id);
-                      refetch();
-                    }
-                  }}
-                >
-                  删除
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function UserForm({
-  initial,
-  roles,
-  onCancel,
-  onSave,
-}: {
-  initial?: User;
-  roles: Role[];
-  onCancel: () => void;
-  onSave: (data: CreateUserInput) => Promise<void>;
-}) {
-  const [username, setUsername] = useState(initial?.username ?? '');
-  const [email, setEmail] = useState(initial?.email ?? '');
-  const [password, setPassword] = useState('');
-  const [isActive, setIsActive] = useState(initial?.is_active ?? true);
-  const [selectedRoles, setSelectedRoles] = useState<string[]>(initial?.role_ids ?? []);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  function toggleRole(roleId: string) {
-    setSelectedRoles((prev) =>
-      prev.includes(roleId) ? prev.filter((r) => r !== roleId) : [...prev, roleId],
-    );
+  function openCreate() {
+    setEditing(null);
+    setModalOpen(true);
   }
 
-  async function handleSubmit() {
-    setSaving(true);
-    setError('');
-    try {
-      const data: CreateUserInput = {
-        username,
-        email,
-        password: password || (initial ? undefined! : password),
-        is_active: isActive,
-        role_ids: selectedRoles,
-      };
-      if (initial && !password) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        delete (data as any).password;
-      }
-      await onSave(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '保存失败');
-    } finally {
-      setSaving(false);
+  function openEdit(u: User) {
+    setEditing(u);
+    setModalOpen(true);
+  }
+
+  async function handleSubmit(values: CreateUserInput | UpdateUserInput) {
+    if (editing) {
+      await update.mutateAsync({ id: editing.id, input: values as UpdateUserInput });
+      toast.success('用户已更新');
+    } else {
+      await create.mutateAsync(values as CreateUserInput);
+      toast.success('用户已创建');
     }
+    setModalOpen(false);
   }
 
-  return (
-    <div className="form-overlay">
-      <div className="form-card">
-        <h2>{initial ? '编辑用户' : '新建用户'}</h2>
-        {error && <div className="form-error">{error}</div>}
+  async function handleToggleActive(u: User) {
+    await update.mutateAsync({ id: u.id, input: { is_active: !u.is_active } });
+    toast.success(u.is_active ? `已禁用 ${u.username}` : `已启用 ${u.username}`);
+  }
 
-        <div className="form-group">
-          <label>用户名</label>
-          <input value={username} onChange={(e) => setUsername(e.target.value)} required />
-        </div>
-        <div className="form-group">
-          <label>邮箱</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        </div>
-        <div className="form-group">
-          <label>{initial ? '新密码（留空不修改）' : '密码'}</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required={!initial}
-            autoComplete="new-password"
-          />
-        </div>
-        <div className="form-group">
-          <label>
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-            />
-            活跃
-          </label>
-        </div>
-        <div className="form-group">
-          <label>角色</label>
-          <div className="role-checkboxes">
-            {roles.map((role) => (
-              <label key={role.id}>
-                <input
-                  type="checkbox"
-                  checked={selectedRoles.includes(role.id)}
-                  onChange={() => toggleRole(role.id)}
-                />
-                {role.name}
-              </label>
+  const columns: ColumnsType<User> = [
+    {
+      title: '用户名',
+      dataIndex: 'username',
+      key: 'username',
+      render: (v: string) => <span className="font-medium text-text">{v}</span>,
+    },
+    { title: '邮箱', dataIndex: 'email', key: 'email' },
+    {
+      title: '角色',
+      dataIndex: 'roles',
+      key: 'roles',
+      render: (roles: string[]) =>
+        roles.length === 0 ? (
+          <span className="text-text-muted">—</span>
+        ) : (
+          <Space size={4} wrap>
+            {roles.map((r) => (
+              <Tag key={r}>{r}</Tag>
             ))}
-          </div>
-        </div>
+          </Space>
+        ),
+    },
+    {
+      title: '状态',
+      dataIndex: 'is_active',
+      key: 'is_active',
+      width: 96,
+      render: (_: boolean, row) => (
+        <Switch
+          size="small"
+          checked={row.is_active}
+          loading={update.isPending && update.variables?.id === row.id}
+          onChange={() => handleToggleActive(row)}
+        />
+      ),
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      render: (v: string) => new Date(v).toLocaleString('zh-CN'),
+      responsive: ['md'],
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 180,
+      render: (_, row) => (
+        <Space size="small">
+          <Button size="small" onClick={() => openEdit(row)}>
+            编辑
+          </Button>
+          <Popconfirm
+            title="删除用户"
+            description={`确定删除 ${row.username}？`}
+            okButtonProps={{ danger: true }}
+            okText="删除"
+            cancelText="取消"
+            onConfirm={async () => {
+              await del.mutateAsync(row.id);
+              toast.success(`已删除 ${row.username}`);
+            }}
+          >
+            <Button size="small" danger>
+              删除
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
 
-        <div className="form-actions">
-          <button className="btn" onClick={onCancel}>取消</button>
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={saving}>
-            {saving ? '保存中...' : '保存'}
-          </button>
-        </div>
+  return (
+    <div className="p-6">
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <h1 className="m-0 text-xl font-semibold text-text">用户管理</h1>
+        <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
+          新建用户
+        </Button>
       </div>
+
+      <Table<User>
+        rowKey="id"
+        columns={columns}
+        dataSource={users}
+        loading={isLoading}
+        pagination={{ pageSize: 20, showSizeChanger: false }}
+        scroll={{ x: 'max-content' }}
+      />
+
+      <UserForm
+        open={modalOpen}
+        initial={editing}
+        onClose={() => setModalOpen(false)}
+        onSubmit={handleSubmit}
+        loading={create.isPending || update.isPending}
+      />
     </div>
   );
 }
