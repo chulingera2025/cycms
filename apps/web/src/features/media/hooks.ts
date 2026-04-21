@@ -9,6 +9,14 @@ export function useMediaList(params: Record<string, string>) {
   });
 }
 
+export function useMedia(id: string | null | undefined) {
+  return useQuery({
+    queryKey: id ? qk.media.detail(id) : ['media', 'noop'],
+    queryFn: () => mediaApi.get(id!),
+    enabled: Boolean(id),
+  });
+}
+
 export function useUploadMedia() {
   const qc = useQueryClient();
   return useMutation({

@@ -1,7 +1,14 @@
-import { DatePicker, Input, InputNumber, Switch } from 'antd';
+import { lazy, Suspense, useState } from 'react';
+import { Button, DatePicker, Input, InputNumber, Skeleton, Space, Switch } from 'antd';
 import dayjs from 'dayjs';
-import MDEditor from '@uiw/react-md-editor';
+import { Image as ImageIcon, Link2, X } from 'lucide-react';
+import { MediaPicker } from '@/features/media/MediaPicker';
+import { useMedia } from '@/features/media/hooks';
+import { resolveMediaUrl, formatBytes } from '@/utils/format';
 import type { FieldDefinition } from '@/types';
+import { RelationSelect } from './RelationSelect';
+
+const MDEditor = lazy(() => import('@uiw/react-md-editor'));
 
 interface Props {
   field: FieldDefinition;
@@ -9,7 +16,64 @@ interface Props {
   onChange: (v: unknown) => void;
 }
 
-// TODO!!! media / relation 字段目前仅接受 ID 原文；后续补 MediaPicker 与远程搜索 Select
+function MediaField({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
+  const [open, setOpen] = useState(false);
+  const id = typeof value === 'string' && value ? value : null;
+  const { data: asset, isLoading } = useMedia(id);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <Button icon={<ImageIcon size={14} />} onClick={() => setOpen(true)}>
+          {id ? '更换媒体' : '选择媒体'}
+        </Button>
+        {id && (
+          <Button type="text" icon={<X size={14} />} onClick={() => onChange(null)}>
+            清除
+          </Button>
+        )}
+      </div>
+      {id &&
+        (isLoading ? (
+          <Skeleton.Input active size="small" style={{ width: 240 }} />
+        ) : asset ? (
+          <div className="flex items-center gap-3 rounded border border-border bg-surface-alt p-2">
+            {asset.mime_type.startsWith('image/') ? (
+              <img
+                src={resolveMediaUrl(asset.storage_path)}
+                alt={asset.original_filename}
+                className="h-12 w-12 rounded object-cover"
+              />
+            ) : (
+              <div className="grid h-12 w-12 place-items-center rounded bg-surface font-mono text-xs text-text-secondary">
+                {asset.mime_type.split('/')[1]?.toUpperCase().slice(0, 4) ?? 'FILE'}
+              </div>
+            )}
+            <div className="min-w-0">
+              <div
+                className="truncate text-sm font-medium text-text"
+                title={asset.original_filename}
+              >
+                {asset.original_filename}
+              </div>
+              <div className="font-mono text-xs text-text-muted">
+                {formatBytes(asset.size)} · {asset.mime_type}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="font-mono text-xs text-text-muted">{id}</div>
+        ))}
+      <MediaPicker
+        open={open}
+        onClose={() => setOpen(false)}
+        onSelect={(ids) => onChange(ids[0] ?? null)}
+        initialSelected={id ? [id] : []}
+      />
+    </div>
+  );
+}
+
 export function FieldRenderer({ field, value, onChange }: Props) {
   switch (field.field_type) {
     case 'boolean':
@@ -46,12 +110,14 @@ export function FieldRenderer({ field, value, onChange }: Props) {
     case 'richtext':
       return (
         <div data-color-mode="inherit">
-          <MDEditor
-            value={typeof value === 'string' ? value : ''}
-            onChange={(v) => onChange(v ?? '')}
-            height={280}
-            preview="live"
-          />
+          <Suspense fallback={<Skeleton.Input active block style={{ height: 280 }} />}>
+            <MDEditor
+              value={typeof value === 'string' ? value : ''}
+              onChange={(v) => onChange(v ?? '')}
+              height={280}
+              preview="live"
+            />
+          </Suspense>
         </div>
       );
 
@@ -78,22 +144,37 @@ export function FieldRenderer({ field, value, onChange }: Props) {
       );
 
     case 'media':
-      return (
-        <Input
-          placeholder="媒体资源 ID"
-          value={typeof value === 'string' ? value : ''}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      );
+      return <MediaField value={value} onChange={onChange} />;
 
-    case 'relation':
+    case 'relation': {
+      const multiple =
+        field.relation_kind === 'one_to_many' || field.relation_kind === 'many_to_many';
+      const normalized = multiple
+        ? Array.isArray(value)
+          ? (value as string[])
+          : value
+            ? [String(value)]
+            : []
+        : typeof value === 'string'
+          ? value
+          : null;
+      if (!field.relation_target) {
+        return (
+          <Space>
+            <Link2 size={14} className="text-text-muted" />
+            <span className="text-xs text-text-muted">未配置 relation_target</span>
+          </Space>
+        );
+      }
       return (
-        <Input
-          placeholder={`关联 ${field.relation_target ?? ''} 的 ID`}
-          value={typeof value === 'string' ? value : ''}
-          onChange={(e) => onChange(e.target.value)}
+        <RelationSelect
+          target={field.relation_target}
+          multiple={multiple}
+          value={normalized}
+          onChange={onChange}
         />
       );
+    }
 
     default:
       return (
