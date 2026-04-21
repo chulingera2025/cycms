@@ -35,7 +35,9 @@ max_connections = 10
 [auth]
 # 生产环境务必替换为强随机密钥（至少 32 字节），使用 openssl 生成示例：openssl rand -hex 32
 # 保持默认占位符时：仅允许绑定回环地址启动（并打警告），其他 host 会拒绝启动
-jwt_secret = "CHANGE_ME_IN_PRODUCTION"
+jwt_secret = "4a47ade02724834cc752a2e4ac6a009d99cb2479899922cd2cf8b9329fcce4ec"
+# jwt_secret = "CHANGE_ME_IN_PRODUCTION"
+
 # access_token 有效期（秒），默认 15 分钟
 access_token_ttl_secs = 900
 # refresh_token 有效期（秒），默认 14 天
