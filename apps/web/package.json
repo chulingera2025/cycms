@@ -7,18 +7,43 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\""
   },
   "dependencies": {
+    "@ant-design/cssinjs": "^1.22.0",
+    "@ant-design/icons": "^5.6.1",
+    "@fontsource/fira-code": "^5.1.0",
+    "@fontsource/fira-sans": "^5.1.0",
+    "@hookform/resolvers": "^3.10.0",
+    "@tanstack/react-query": "^5.62.0",
+    "@uiw/react-md-editor": "^4.0.4",
+    "antd": "^5.24.0",
+    "clsx": "^2.1.1",
+    "dayjs": "^1.11.13",
+    "i18next": "^24.2.0",
+    "i18next-browser-languagedetector": "^8.0.0",
+    "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.5.0"
+    "react-hook-form": "^7.54.0",
+    "react-i18next": "^15.4.0",
+    "react-router-dom": "^7.5.0",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@tailwindcss/forms": "^0.5.9",
+    "@tailwindcss/typography": "^0.5.15",
+    "@tanstack/react-query-devtools": "^5.62.0",
     "@types/node": "^25.6.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "prettier": "^3.4.2",
+    "prettier-plugin-tailwindcss": "^0.6.9",
+    "tailwindcss": "^3.4.17",
     "typescript": "~6.0.3",
     "vite": "^8.0.9"
   }

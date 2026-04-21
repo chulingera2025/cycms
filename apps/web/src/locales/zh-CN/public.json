@@ -1,0 +1,10 @@
+{
+  "nav": {
+    "home": "首页",
+    "content": "内容",
+    "search": "搜索",
+    "login": "登录",
+    "register": "注册",
+    "profile": "个人中心"
+  }
+}

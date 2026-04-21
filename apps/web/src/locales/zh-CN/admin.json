@@ -1,0 +1,12 @@
+{
+  "nav": {
+    "dashboard": "仪表盘",
+    "contentTypes": "内容类型",
+    "content": "内容",
+    "media": "媒体",
+    "plugins": "插件",
+    "users": "用户",
+    "roles": "角色",
+    "settings": "设置"
+  }
+}
