@@ -30,8 +30,9 @@ exclude = ["support/cycms-native-loader"]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
-license = "Apache-2.0"
+authors = ["chulingera2025 <chulingera2025@gmail.com>"]
 repository = "https://github.com/chulingera2025/cycms"
+license = "MIT"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
