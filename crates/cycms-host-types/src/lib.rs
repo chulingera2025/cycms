@@ -298,6 +298,24 @@ pub struct HostRegistryDiagnosticsSnapshot {
     pub compatibility: Vec<CompatibilityRegistration>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminMenuEntry {
+    pub id: String,
+    pub label: String,
+    pub path: String,
+    pub mode: AdminPageMode,
+    pub plugin_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminMenuGroup {
+    pub zone: String,
+    #[serde(default)]
+    pub entries: Vec<AdminMenuEntry>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OwnershipDecision<T> {
     pub primary: Option<T>,

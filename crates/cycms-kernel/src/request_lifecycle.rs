@@ -167,6 +167,7 @@ fn render_owned_public_page(page: &PublicPageRegistration, registry: &HostRegist
 fn render_owned_admin_page(page: &AdminPageRegistration, registry: &HostRegistry) -> Response {
     let shell_mode = admin_page_mode_name(page.mode);
     let title = format!("{} | Admin", page.title);
+    let navigation = render_admin_navigation(registry, &page.path);
     let island = match page.mode {
         AdminPageMode::Html => None,
         AdminPageMode::Hybrid | AdminPageMode::Island | AdminPageMode::Compatibility => {
@@ -182,6 +183,7 @@ fn render_owned_admin_page(page: &AdminPageRegistration, registry: &HostRegistry
     };
 
     let mut body_children = vec![
+        navigation,
         PageNode::Html(HtmlNode {
             tag: "h1".to_owned(),
             attributes: Default::default(),
@@ -235,6 +237,68 @@ fn render_owned_admin_page(page: &AdminPageRegistration, registry: &HostRegistry
     };
 
     render_owned_document(&document, &assets, &page.path, &page.handler, "admin")
+}
+
+fn render_admin_navigation(registry: &HostRegistry, current_path: &str) -> PageNode {
+    let normalized_current_path = normalize_navigation_path(current_path);
+    let groups = registry.admin_menu_tree();
+    let group_nodes = groups
+        .into_iter()
+        .map(|group| {
+            let entry_nodes = group
+                .entries
+                .into_iter()
+                .map(|entry| {
+                    let mut attributes = BTreeMap::from([("href".to_owned(), entry.path.clone())]);
+                    if normalize_navigation_path(&entry.path) == normalized_current_path {
+                        attributes.insert("aria-current".to_owned(), "page".to_owned());
+                    }
+
+                    PageNode::Html(HtmlNode {
+                        tag: "li".to_owned(),
+                        attributes: Default::default(),
+                        children: vec![PageNode::Html(HtmlNode {
+                            tag: "a".to_owned(),
+                            attributes,
+                            children: vec![PageNode::Text(TextNode { value: entry.label })],
+                        })],
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            PageNode::Html(HtmlNode {
+                tag: "section".to_owned(),
+                attributes: BTreeMap::from([("data-admin-zone".to_owned(), group.zone.clone())]),
+                children: vec![
+                    PageNode::Html(HtmlNode {
+                        tag: "h2".to_owned(),
+                        attributes: Default::default(),
+                        children: vec![PageNode::Text(TextNode { value: group.zone })],
+                    }),
+                    PageNode::Html(HtmlNode {
+                        tag: "ul".to_owned(),
+                        attributes: Default::default(),
+                        children: entry_nodes,
+                    }),
+                ],
+            })
+        })
+        .collect::<Vec<_>>();
+
+    PageNode::Html(HtmlNode {
+        tag: "nav".to_owned(),
+        attributes: BTreeMap::from([("data-admin-nav".to_owned(), "primary".to_owned())]),
+        children: group_nodes,
+    })
+}
+
+fn normalize_navigation_path(path: &str) -> String {
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() {
+        "/".to_owned()
+    } else {
+        trimmed.to_owned()
+    }
 }
 
 fn render_owned_document(
@@ -444,6 +508,9 @@ mod tests {
 
         assert!(html.contains("<title>Blog Dashboard | Admin</title>"));
         assert!(html.contains("Handled by frontend.route:root"));
+        assert!(html.contains("data-admin-nav=\"primary\""));
+        assert!(html.contains("Dashboard"));
+        assert!(html.contains("aria-current=\"page\""));
         assert!(html.contains("data-admin-mode=\"compatibility\""));
         assert!(html.contains("/plugins/blog/admin/main.css"));
         assert!(html.contains("/plugins/blog/admin/main.js"));
@@ -468,5 +535,26 @@ mod tests {
 
         assert!(html.contains("data-admin-mode=\"html\""));
         assert!(!html.contains("data-island-boot="));
+    }
+
+    #[tokio::test]
+    async fn admin_navigation_marks_current_entry_with_trailing_slash_request() {
+        let request = Request::builder()
+            .uri("/admin/x/blog/dashboard/")
+            .body(Body::empty())
+            .unwrap();
+
+        let outcome =
+            DefaultRequestLifecycleEngine::new(admin_page_registry(AdminPageMode::Compatibility))
+                .execute_admin_request(&request);
+
+        let response = outcome.response.expect("owned admin page should render");
+        let body = body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let html = std::str::from_utf8(&body).unwrap();
+
+        assert!(html.contains("href=\"/admin/x/blog/dashboard\""));
+        assert!(html.contains("aria-current=\"page\""));
     }
 }

@@ -1,11 +1,11 @@
 use std::cmp::Ordering;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use cycms_host_types::{
-    AdminPageRegistration, CompiledExtensionRegistry, EditorRegistration, EditorTarget,
-    HostRegistryDiagnosticsSnapshot, HostRequestTarget, OwnershipCandidate, OwnershipDecision,
-    OwnershipDiagnostics, OwnershipMode, ParserRegistration, ParseTarget,
-    PublicPageRegistration, RegistrationSource,
+    AdminMenuEntry, AdminMenuGroup, AdminPageRegistration, CompiledExtensionRegistry,
+    EditorRegistration, EditorTarget, HostRegistryDiagnosticsSnapshot, HostRequestTarget,
+    OwnershipCandidate, OwnershipDecision, OwnershipDiagnostics, OwnershipMode, ParseTarget,
+    ParserRegistration, PublicPageRegistration, RegistrationSource,
 };
 
 pub trait RegistryLookup {
@@ -49,7 +49,10 @@ impl HostRegistry {
             .map(|page| page.path.clone())
             .collect::<BTreeSet<_>>()
             .into_iter()
-            .map(|path| self.resolve_public_page(&HostRequestTarget { path }).diagnostics)
+            .map(|path| {
+                self.resolve_public_page(&HostRequestTarget { path })
+                    .diagnostics
+            })
             .collect();
         let admin_pages = self
             .compiled
@@ -58,7 +61,10 @@ impl HostRegistry {
             .map(|page| page.path.clone())
             .collect::<BTreeSet<_>>()
             .into_iter()
-            .map(|path| self.resolve_admin_page(&HostRequestTarget { path }).diagnostics)
+            .map(|path| {
+                self.resolve_admin_page(&HostRequestTarget { path })
+                    .diagnostics
+            })
             .collect();
         let parsers = self
             .compiled
@@ -92,6 +98,29 @@ impl HostRegistry {
         }
     }
 
+    #[must_use]
+    pub fn admin_menu_tree(&self) -> Vec<AdminMenuGroup> {
+        let mut grouped = BTreeMap::<String, Vec<AdminMenuEntry>>::new();
+
+        for page in &self.compiled.admin_pages {
+            let Some(entry) = admin_menu_entry_from_registration(page) else {
+                continue;
+            };
+            let zone = admin_menu_zone(page);
+            grouped.entry(zone).or_default().push(entry);
+        }
+
+        let mut groups = grouped
+            .into_iter()
+            .map(|(zone, mut entries)| {
+                entries.sort_by(compare_admin_menu_entries);
+                AdminMenuGroup { zone, entries }
+            })
+            .collect::<Vec<_>>();
+        groups.sort_by(compare_admin_menu_groups);
+        groups
+    }
+
     fn resolve_owned<T>(
         surface: &str,
         target: String,
@@ -119,9 +148,15 @@ impl HostRegistry {
         let diagnostics = OwnershipDiagnostics {
             surface: surface.to_owned(),
             target,
-            candidates: candidates.iter().map(ownership_candidate_from_registration).collect(),
+            candidates: candidates
+                .iter()
+                .map(ownership_candidate_from_registration)
+                .collect(),
             primary: primary.as_ref().map(|candidate| candidate.id().to_owned()),
-            wrappers: wrappers.iter().map(|candidate| candidate.id().to_owned()).collect(),
+            wrappers: wrappers
+                .iter()
+                .map(|candidate| candidate.id().to_owned())
+                .collect(),
             appenders: appenders
                 .iter()
                 .map(|candidate| candidate.id().to_owned())
@@ -199,34 +234,68 @@ trait OwnedRegistration: Clone {
 }
 
 impl OwnedRegistration for PublicPageRegistration {
-    fn id(&self) -> &str { &self.id }
-    fn priority(&self) -> i32 { self.priority }
-    fn ownership(&self) -> OwnershipMode { self.ownership }
-    fn source(&self) -> &RegistrationSource { &self.source }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn priority(&self) -> i32 {
+        self.priority
+    }
+    fn ownership(&self) -> OwnershipMode {
+        self.ownership
+    }
+    fn source(&self) -> &RegistrationSource {
+        &self.source
+    }
 }
 
 impl OwnedRegistration for AdminPageRegistration {
-    fn id(&self) -> &str { &self.id }
-    fn priority(&self) -> i32 { self.priority }
-    fn ownership(&self) -> OwnershipMode { self.ownership }
-    fn source(&self) -> &RegistrationSource { &self.source }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn priority(&self) -> i32 {
+        self.priority
+    }
+    fn ownership(&self) -> OwnershipMode {
+        self.ownership
+    }
+    fn source(&self) -> &RegistrationSource {
+        &self.source
+    }
 }
 
 impl OwnedRegistration for ParserRegistration {
-    fn id(&self) -> &str { &self.id }
-    fn priority(&self) -> i32 { self.priority }
-    fn ownership(&self) -> OwnershipMode { self.ownership }
-    fn source(&self) -> &RegistrationSource { &self.source }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn priority(&self) -> i32 {
+        self.priority
+    }
+    fn ownership(&self) -> OwnershipMode {
+        self.ownership
+    }
+    fn source(&self) -> &RegistrationSource {
+        &self.source
+    }
 }
 
 impl OwnedRegistration for EditorRegistration {
-    fn id(&self) -> &str { &self.id }
-    fn priority(&self) -> i32 { self.priority }
-    fn ownership(&self) -> OwnershipMode { self.ownership }
-    fn source(&self) -> &RegistrationSource { &self.source }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn priority(&self) -> i32 {
+        self.priority
+    }
+    fn ownership(&self) -> OwnershipMode {
+        self.ownership
+    }
+    fn source(&self) -> &RegistrationSource {
+        &self.source
+    }
 }
 
-fn ownership_candidate_from_registration<T: OwnedRegistration>(registration: &T) -> OwnershipCandidate {
+fn ownership_candidate_from_registration<T: OwnedRegistration>(
+    registration: &T,
+) -> OwnershipCandidate {
     OwnershipCandidate {
         registration_id: registration.id().to_owned(),
         plugin_name: registration.source().plugin_name.clone(),
@@ -242,9 +311,56 @@ fn compare_candidates<T: OwnedRegistration>(left: &T, right: &T) -> Ordering {
     right
         .priority()
         .cmp(&left.priority())
-        .then(left.ownership().precedence().cmp(&right.ownership().precedence()))
-        .then(left.source().declaration_order.cmp(&right.source().declaration_order))
+        .then(
+            left.ownership()
+                .precedence()
+                .cmp(&right.ownership().precedence()),
+        )
+        .then(
+            left.source()
+                .declaration_order
+                .cmp(&right.source().declaration_order),
+        )
         .then(left.id().cmp(right.id()))
+}
+
+fn admin_menu_entry_from_registration(page: &AdminPageRegistration) -> Option<AdminMenuEntry> {
+    Some(AdminMenuEntry {
+        id: page.id.clone(),
+        label: page.menu_label.clone()?,
+        path: page.path.clone(),
+        mode: page.mode,
+        plugin_name: page.source.plugin_name.clone(),
+    })
+}
+
+fn admin_menu_zone(page: &AdminPageRegistration) -> String {
+    page.menu_zone
+        .clone()
+        .unwrap_or_else(|| "content".to_owned())
+}
+
+fn compare_admin_menu_groups(left: &AdminMenuGroup, right: &AdminMenuGroup) -> Ordering {
+    admin_menu_zone_rank(&left.zone)
+        .cmp(&admin_menu_zone_rank(&right.zone))
+        .then(left.zone.cmp(&right.zone))
+}
+
+fn compare_admin_menu_entries(left: &AdminMenuEntry, right: &AdminMenuEntry) -> Ordering {
+    left.label
+        .cmp(&right.label)
+        .then(left.path.cmp(&right.path))
+        .then(left.id.cmp(&right.id))
+}
+
+fn admin_menu_zone_rank(zone: &str) -> u8 {
+    match zone {
+        "content" => 0,
+        "media" => 1,
+        "plugins" => 2,
+        "settings" => 3,
+        _ => 4,
+    }
 }
 
 fn normalize_path(path: &str) -> String {
@@ -260,7 +376,8 @@ fn normalize_path(path: &str) -> String {
 }
 
 fn matches_selector(selectors: &[String], actual: Option<&str>) -> bool {
-    selectors.is_empty() || actual.is_some_and(|value| selectors.iter().any(|selector| selector == value))
+    selectors.is_empty()
+        || actual.is_some_and(|value| selectors.iter().any(|selector| selector == value))
 }
 
 fn parser_matches(parser: &ParserRegistration, target: &ParseTarget) -> bool {
@@ -289,9 +406,15 @@ fn parser_target_from_key(key: &str) -> Option<ParseTarget> {
     for part in key.split('|') {
         let (name, value) = part.split_once('=')?;
         match name {
-            "ct" if !value.is_empty() => target.content_type = value.split(',').next().map(ToOwned::to_owned),
-            "fn" if !value.is_empty() => target.field_name = value.split(',').next().map(ToOwned::to_owned),
-            "sf" if !value.is_empty() => target.source_format = value.split(',').next().map(ToOwned::to_owned),
+            "ct" if !value.is_empty() => {
+                target.content_type = value.split(',').next().map(ToOwned::to_owned)
+            }
+            "fn" if !value.is_empty() => {
+                target.field_name = value.split(',').next().map(ToOwned::to_owned)
+            }
+            "sf" if !value.is_empty() => {
+                target.source_format = value.split(',').next().map(ToOwned::to_owned)
+            }
             _ => {}
         }
     }
@@ -312,9 +435,15 @@ fn editor_target_from_key(key: &str) -> Option<EditorTarget> {
     for part in key.split('|') {
         let (name, value) = part.split_once('=')?;
         match name {
-            "ct" if !value.is_empty() => target.content_type = value.split(',').next().map(ToOwned::to_owned),
-            "ft" if !value.is_empty() => target.field_type = value.split(',').next().map(ToOwned::to_owned),
-            "st" if !value.is_empty() => target.screen_target = value.split(',').next().map(ToOwned::to_owned),
+            "ct" if !value.is_empty() => {
+                target.content_type = value.split(',').next().map(ToOwned::to_owned)
+            }
+            "ft" if !value.is_empty() => {
+                target.field_type = value.split(',').next().map(ToOwned::to_owned)
+            }
+            "st" if !value.is_empty() => {
+                target.screen_target = value.split(',').next().map(ToOwned::to_owned)
+            }
             _ => {}
         }
     }
@@ -338,7 +467,8 @@ fn format_editor_target(target: &EditorTarget) -> String {
 #[cfg(test)]
 mod tests {
     use cycms_host_types::{
-        CompatibilityRegistration, HookRegistration, RegistrationOriginKind, RegistrationSource,
+        AdminPageMode, CompatibilityRegistration, HookRegistration, RegistrationOriginKind,
+        RegistrationSource,
     };
 
     use super::*;
@@ -424,5 +554,82 @@ mod tests {
         let snapshot = registry.diagnostics_snapshot();
         assert_eq!(snapshot.compatibility.len(), 1);
         assert_eq!(snapshot.hooks.len(), 1);
+    }
+
+    #[test]
+    fn admin_menu_tree_groups_and_sorts_entries() {
+        let registry = HostRegistry::new(CompiledExtensionRegistry {
+            admin_pages: vec![
+                AdminPageRegistration {
+                    id: "blog.settings.general".to_owned(),
+                    source: source("blog", 0),
+                    path: "/admin/settings/blog".to_owned(),
+                    title: "Blog Settings".to_owned(),
+                    mode: AdminPageMode::Html,
+                    priority: 0,
+                    ownership: OwnershipMode::Replace,
+                    handler: "blog::settings".to_owned(),
+                    menu_label: Some("Blog Settings".to_owned()),
+                    menu_zone: Some("settings".to_owned()),
+                    asset_bundle_ids: Vec::new(),
+                },
+                AdminPageRegistration {
+                    id: "blog.content.write".to_owned(),
+                    source: source("blog", 1),
+                    path: "/admin/write".to_owned(),
+                    title: "Write".to_owned(),
+                    mode: AdminPageMode::Hybrid,
+                    priority: 0,
+                    ownership: OwnershipMode::Replace,
+                    handler: "blog::write".to_owned(),
+                    menu_label: Some("Write".to_owned()),
+                    menu_zone: Some("content".to_owned()),
+                    asset_bundle_ids: Vec::new(),
+                },
+                AdminPageRegistration {
+                    id: "blog.content.pages".to_owned(),
+                    source: source("blog", 2),
+                    path: "/admin/pages".to_owned(),
+                    title: "Pages".to_owned(),
+                    mode: AdminPageMode::Hybrid,
+                    priority: 0,
+                    ownership: OwnershipMode::Replace,
+                    handler: "blog::pages".to_owned(),
+                    menu_label: Some("Pages".to_owned()),
+                    menu_zone: Some("content".to_owned()),
+                    asset_bundle_ids: Vec::new(),
+                },
+                AdminPageRegistration {
+                    id: "blog.hidden.preview".to_owned(),
+                    source: source("blog", 3),
+                    path: "/admin/preview".to_owned(),
+                    title: "Preview".to_owned(),
+                    mode: AdminPageMode::Compatibility,
+                    priority: 0,
+                    ownership: OwnershipMode::Replace,
+                    handler: "blog::preview".to_owned(),
+                    menu_label: None,
+                    menu_zone: Some("content".to_owned()),
+                    asset_bundle_ids: Vec::new(),
+                },
+            ],
+            ..CompiledExtensionRegistry::default()
+        });
+
+        let tree = registry.admin_menu_tree();
+
+        assert_eq!(tree.len(), 2);
+        assert_eq!(tree[0].zone, "content");
+        assert_eq!(
+            tree[0]
+                .entries
+                .iter()
+                .map(|entry| entry.label.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Pages", "Write"]
+        );
+        assert_eq!(tree[1].zone, "settings");
+        assert_eq!(tree[1].entries.len(), 1);
+        assert_eq!(tree[1].entries[0].label, "Blog Settings");
     }
 }
