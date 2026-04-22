@@ -34,6 +34,7 @@ use cycms_plugin_wasm::WasmPluginRuntime;
 use cycms_publish::PublishManager;
 use cycms_revision::RevisionManager;
 use cycms_settings::SettingsManager;
+use serde_json::Value;
 use semver::Version;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
@@ -611,8 +612,35 @@ fn build_admin_fallback_router(
 }
 
 fn resolve_host_island_runtime_module(web_dist: &Path) -> Option<String> {
-    let index_html = std::fs::read_to_string(web_dist.join("index.html")).ok()?;
-    extract_first_module_script_src(&index_html)
+    resolve_host_island_entry_module(web_dist, "index.html", "app").or_else(|| {
+        let index_html = std::fs::read_to_string(web_dist.join("index.html")).ok()?;
+        extract_first_module_script_src(&index_html)
+    })
+}
+
+fn resolve_host_island_entry_module(
+    web_dist: &Path,
+    manifest_key: &str,
+    stable_entry_name: &str,
+) -> Option<String> {
+    resolve_vite_manifest_entry_file(web_dist, manifest_key)
+        .or_else(|| resolve_stable_host_asset_entry(web_dist, stable_entry_name))
+}
+
+fn resolve_vite_manifest_entry_file(web_dist: &Path, manifest_key: &str) -> Option<String> {
+    let manifest_path = web_dist.join(".vite").join("manifest.json");
+    let manifest = std::fs::read_to_string(manifest_path).ok()?;
+    let value: Value = serde_json::from_str(&manifest).ok()?;
+    let file = value.get(manifest_key)?.get("file")?.as_str()?;
+    Some(format!("/{}", file.trim_start_matches('/')))
+}
+
+fn resolve_stable_host_asset_entry(web_dist: &Path, stable_entry_name: &str) -> Option<String> {
+    let relative = format!("assets/{stable_entry_name}.js");
+    web_dist
+        .join(&relative)
+        .is_file()
+        .then(|| format!("/{relative}"))
 }
 
 fn extract_first_module_script_src(index_html: &str) -> Option<String> {
@@ -827,7 +855,10 @@ mod tests {
     use tempfile::tempdir;
     use tower::ServiceExt;
 
-    use super::{build_admin_fallback_router, build_public_fallback_service, validate_auth_config};
+    use super::{
+        build_admin_fallback_router, build_public_fallback_service,
+        resolve_host_island_entry_module, validate_auth_config,
+    };
 
     fn config_with(host: &str, secret: &str) -> AppConfig {
         let mut config = AppConfig::default();
@@ -913,6 +944,54 @@ mod tests {
             let config = config_with(host, &strong);
             validate_auth_config(&config).expect("强密钥在任何 host 都应通过");
         }
+    }
+
+    #[test]
+    fn resolves_host_island_entry_from_vite_manifest() {
+        let temp = tempdir().unwrap();
+        fs::create_dir_all(temp.path().join(".vite")).unwrap();
+        fs::write(
+            temp.path().join(".vite").join("manifest.json"),
+            r#"{
+  "src/islands/content-workspace.tsx": {
+    "file": "assets/admin-content-workspace-abc123.js",
+    "name": "admin-content-workspace",
+    "src": "src/islands/content-workspace.tsx",
+    "isEntry": true
+  }
+}"#,
+        )
+        .unwrap();
+
+        let resolved = resolve_host_island_entry_module(
+            temp.path(),
+            "src/islands/content-workspace.tsx",
+            "admin-content-workspace",
+        );
+
+        assert_eq!(
+            resolved,
+            Some("/assets/admin-content-workspace-abc123.js".to_owned())
+        );
+    }
+
+    #[test]
+    fn resolves_host_island_entry_from_stable_asset_name_when_manifest_is_missing() {
+        let temp = tempdir().unwrap();
+        fs::create_dir_all(temp.path().join("assets")).unwrap();
+        fs::write(
+            temp.path().join("assets").join("admin-media-workspace.js"),
+            "export const mount = () => {};",
+        )
+        .unwrap();
+
+        let resolved = resolve_host_island_entry_module(
+            temp.path(),
+            "src/islands/media-workspace.tsx",
+            "admin-media-workspace",
+        );
+
+        assert_eq!(resolved, Some("/assets/admin-media-workspace.js".to_owned()));
     }
 
     #[tokio::test]
