@@ -9,7 +9,9 @@ use axum::extract::{Request, State};
 use axum::http::{HeaderName, HeaderValue, Method, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
+use axum::routing::any;
 use cycms_auth::AuthEngine;
+use cycms_config::AdminShellMode;
 use cycms_config::AppConfig;
 use cycms_config::CorsConfig;
 use cycms_config::PublicPagesMode;
@@ -250,11 +252,17 @@ impl Kernel {
         let public_fallback_service = build_public_fallback_service(
             ctx.config.host_rendering.public_pages_mode,
             Arc::clone(&ctx.host_registry),
+            web_dist.clone(),
+        );
+        let admin_fallback_router = build_admin_fallback_router(
+            ctx.config.host_rendering.admin_shell_mode,
+            Arc::clone(&ctx.host_registry),
             web_dist,
         );
 
         let app = api_router
             .nest_service("/uploads", uploads_service)
+            .merge(admin_fallback_router)
             .fallback_service(public_fallback_service)
             .layer(
                 ServiceBuilder::new()
@@ -579,9 +587,31 @@ fn build_public_fallback_service(
         })
 }
 
+fn build_admin_fallback_router(
+    mode: AdminShellMode,
+    host_registry: Arc<HostRegistry>,
+    web_dist: PathBuf,
+) -> Router {
+    Router::new()
+        .route("/admin", any(admin_fallback_handler))
+        .route("/admin/{*path}", any(admin_fallback_handler))
+        .with_state(AdminFallbackState {
+            mode,
+            web_dist,
+            lifecycle_engine: DefaultRequestLifecycleEngine::new(host_registry),
+        })
+}
+
 #[derive(Clone)]
 struct PublicFallbackState {
     mode: PublicPagesMode,
+    web_dist: PathBuf,
+    lifecycle_engine: DefaultRequestLifecycleEngine,
+}
+
+#[derive(Clone)]
+struct AdminFallbackState {
+    mode: AdminShellMode,
     web_dist: PathBuf,
     lifecycle_engine: DefaultRequestLifecycleEngine,
 }
@@ -618,6 +648,38 @@ async fn public_fallback_handler(
     }
 }
 
+async fn admin_fallback_handler(
+    State(state): State<AdminFallbackState>,
+    request: Request,
+) -> Response {
+    match state.mode {
+        AdminShellMode::Compat => serve_spa_fallback(&state.web_dist, request).await,
+        AdminShellMode::HostFirst => {
+            let outcome = state.lifecycle_engine.execute_admin_request(&request);
+            if let Some(response) = outcome.response {
+                finalize_admin_response(response, state.mode, outcome.trace)
+            } else {
+                let mut trace = outcome.trace;
+                trace.push(LifecyclePhase::CompatAdminFallback);
+                let response = serve_spa_fallback(&state.web_dist, request).await;
+                finalize_admin_response(response, state.mode, trace)
+            }
+        }
+        AdminShellMode::HostOnly => {
+            let outcome = state.lifecycle_engine.execute_admin_request(&request);
+            if let Some(response) = outcome.response {
+                finalize_admin_response(response, state.mode, outcome.trace)
+            } else {
+                finalize_admin_response(
+                    axum::http::StatusCode::NOT_FOUND.into_response(),
+                    state.mode,
+                    outcome.trace,
+                )
+            }
+        }
+    }
+}
+
 async fn serve_spa_fallback(web_dist: &Path, request: Request) -> Response {
     ServeDir::new(web_dist)
         .fallback(ServeFile::new(web_dist.join("index.html")))
@@ -639,6 +701,28 @@ fn finalize_public_response(
             PublicPagesMode::Compat => "compat",
             PublicPagesMode::HostFirst => "host-first",
             PublicPagesMode::HostOnly => "host-only",
+        }),
+    );
+    if let Ok(value) = HeaderValue::from_str(&trace.header_value()) {
+        response
+            .headers_mut()
+            .insert(HeaderName::from_static("x-cycms-lifecycle-trace"), value);
+    }
+    response
+}
+
+fn finalize_admin_response(
+    mut response: Response,
+    mode: AdminShellMode,
+    mut trace: LifecycleTrace,
+) -> Response {
+    trace.push(LifecyclePhase::BeforeSend);
+    response.headers_mut().insert(
+        HeaderName::from_static("x-cycms-admin-shell-mode"),
+        HeaderValue::from_static(match mode {
+            AdminShellMode::Compat => "compat",
+            AdminShellMode::HostFirst => "host-first",
+            AdminShellMode::HostOnly => "host-only",
         }),
     );
     if let Ok(value) = HeaderValue::from_str(&trace.header_value()) {
@@ -708,15 +792,19 @@ mod tests {
     use axum::body::{self, Body};
     use axum::extract::Request;
     use axum::http::StatusCode;
+    use cycms_config::AdminShellMode;
     use cycms_config::PublicPagesMode;
     use cycms_config::{AppConfig, JWT_SECRET_PLACEHOLDER};
     use cycms_core::Error;
-    use cycms_host_types::CompiledExtensionRegistry;
+    use cycms_host_types::{
+        AdminPageMode, AdminPageRegistration, AssetBundleRegistration, CompiledExtensionRegistry,
+        OwnershipMode, RegistrationOriginKind, RegistrationSource,
+    };
     use cycms_plugin_manager::HostRegistry;
     use tempfile::tempdir;
     use tower::ServiceExt;
 
-    use super::{build_public_fallback_service, validate_auth_config};
+    use super::{build_admin_fallback_router, build_public_fallback_service, validate_auth_config};
 
     fn config_with(host: &str, secret: &str) -> AppConfig {
         let mut config = AppConfig::default();
@@ -727,6 +815,44 @@ mod tests {
 
     fn empty_host_registry() -> Arc<HostRegistry> {
         Arc::new(HostRegistry::new(CompiledExtensionRegistry::default()))
+    }
+
+    fn admin_host_registry() -> Arc<HostRegistry> {
+        Arc::new(HostRegistry::new(CompiledExtensionRegistry {
+            admin_pages: vec![AdminPageRegistration {
+                id: "blog-dashboard".to_owned(),
+                source: RegistrationSource {
+                    plugin_name: "blog".to_owned(),
+                    plugin_version: "0.1.0".to_owned(),
+                    origin: RegistrationOriginKind::HostManifest,
+                    declaration_order: 0,
+                },
+                path: "/admin/x/blog/dashboard".to_owned(),
+                title: "Blog Dashboard".to_owned(),
+                mode: AdminPageMode::Compatibility,
+                priority: 0,
+                ownership: OwnershipMode::Replace,
+                handler: "frontend.route:root".to_owned(),
+                menu_label: Some("Dashboard".to_owned()),
+                menu_zone: Some("content".to_owned()),
+                asset_bundle_ids: vec!["blog-admin".to_owned()],
+            }],
+            assets: vec![AssetBundleRegistration {
+                id: "blog-admin".to_owned(),
+                source: RegistrationSource {
+                    plugin_name: "blog".to_owned(),
+                    plugin_version: "0.1.0".to_owned(),
+                    origin: RegistrationOriginKind::HostManifest,
+                    declaration_order: 1,
+                },
+                apply_to: vec!["admin_extension".to_owned()],
+                modules: vec!["/plugins/blog/admin/main.js".to_owned()],
+                scripts: Vec::new(),
+                styles: vec!["/plugins/blog/admin/main.css".to_owned()],
+                inline_data_keys: Vec::new(),
+            }],
+            ..CompiledExtensionRegistry::default()
+        }))
     }
 
     #[test]
@@ -844,6 +970,111 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         assert_eq!(
             response.headers().get("x-cycms-public-pages-mode").unwrap(),
+            "host-only"
+        );
+        assert_eq!(
+            response.headers().get("x-cycms-lifecycle-trace").unwrap(),
+            "request_received,route_matched,before_send"
+        );
+    }
+
+    #[tokio::test]
+    async fn admin_compat_mode_serves_spa_index_for_unknown_path() {
+        let temp = tempdir().unwrap();
+        fs::write(temp.path().join("index.html"), "<html>admin-compat</html>").unwrap();
+
+        let response = build_admin_fallback_router(
+            AdminShellMode::Compat,
+            empty_host_registry(),
+            temp.path().into(),
+        )
+        .oneshot(
+            Request::builder()
+                .uri("/admin/content")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(
+            std::str::from_utf8(&body).unwrap(),
+            "<html>admin-compat</html>"
+        );
+    }
+
+    #[tokio::test]
+    async fn admin_host_first_mode_renders_owned_admin_page() {
+        let temp = tempdir().unwrap();
+        fs::write(
+            temp.path().join("index.html"),
+            "<html>admin-host-first</html>",
+        )
+        .unwrap();
+
+        let response = build_admin_fallback_router(
+            AdminShellMode::HostFirst,
+            admin_host_registry(),
+            temp.path().into(),
+        )
+        .oneshot(
+            Request::builder()
+                .uri("/admin/x/blog/dashboard")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("x-cycms-admin-shell-mode").unwrap(),
+            "host-first"
+        );
+        assert_eq!(
+            response.headers().get("x-cycms-lifecycle-trace").unwrap(),
+            "request_received,route_matched,before_send"
+        );
+        let body = body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let html = std::str::from_utf8(&body).unwrap();
+        assert!(html.contains("Blog Dashboard | Admin"));
+        assert!(html.contains("/plugins/blog/admin/main.css"));
+        assert!(html.contains("/plugins/blog/admin/main.js"));
+        assert!(html.contains("data-island-boot=\"admin-screen:blog-dashboard\""));
+    }
+
+    #[tokio::test]
+    async fn admin_host_only_mode_returns_not_found_without_spa_fallback() {
+        let temp = tempdir().unwrap();
+        fs::write(
+            temp.path().join("index.html"),
+            "<html>admin-host-only</html>",
+        )
+        .unwrap();
+
+        let response = build_admin_fallback_router(
+            AdminShellMode::HostOnly,
+            empty_host_registry(),
+            temp.path().into(),
+        )
+        .oneshot(
+            Request::builder()
+                .uri("/admin/content")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response.headers().get("x-cycms-admin-shell-mode").unwrap(),
             "host-only"
         );
         assert_eq!(

@@ -34,11 +34,11 @@ axum = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true, features = ["fs"] }
 tracing = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 sqlx = { workspace = true }
-serde_json = { workspace = true }
 cycms-revision = { workspace = true }
 cycms-publish = { workspace = true }
 cycms-media = { workspace = true }
