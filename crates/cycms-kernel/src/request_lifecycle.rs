@@ -123,7 +123,7 @@ fn render_owned_public_page(page: &PublicPageRegistration, registry: &HostRegist
         islands: Vec::new(),
         cache_tags: vec![format!("plugin:{}", page.source.plugin_name)],
     };
-    let assets = match DefaultAssetGraphBuilder.build_public_page(page, registry) {
+    let assets = match DefaultAssetGraphBuilder.build_public_page(&document, page, registry) {
         Ok(assets) => assets,
         Err(source) => {
             error!(path = %page.path, handler = %page.handler, error = %source, "failed to build asset graph for host-owned public page");

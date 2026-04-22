@@ -1,15 +1,18 @@
 use std::collections::BTreeSet;
 
-use cycms_core::Result;
+use cycms_core::{Error, Result};
 use cycms_host_types::{
-    AssetBundleRegistration, AssetGraph, AssetReference, PublicPageRegistration,
+    AssetBundleRegistration, AssetGraph, AssetReference, HeadNode, HtmlNode, IslandBootSpec,
+    IslandMount, PageDocument, PageNode, PublicPageRegistration, TextNode,
 };
 use cycms_plugin_manager::HostRegistry;
+use http::StatusCode;
 
 pub trait AssetGraphBuilder {
     fn build_public_page(
         &self,
-        page: &PublicPageRegistration,
+        page: &PageDocument,
+        registration: &PublicPageRegistration,
         registry: &HostRegistry,
     ) -> Result<AssetGraph>;
 }
@@ -19,28 +22,60 @@ pub struct DefaultAssetGraphBuilder;
 impl AssetGraphBuilder for DefaultAssetGraphBuilder {
     fn build_public_page(
         &self,
-        page: &PublicPageRegistration,
+        page: &PageDocument,
+        registration: &PublicPageRegistration,
         registry: &HostRegistry,
     ) -> Result<AssetGraph> {
-        let bundle_ids = page
+        let bundle_ids = registration
             .asset_bundle_ids
             .iter()
             .cloned()
             .collect::<BTreeSet<_>>();
+        let styles = collect_asset_refs(registry, &bundle_ids, registration, "style", |bundle| {
+            &bundle.styles
+        });
+        let scripts = collect_asset_refs(registry, &bundle_ids, registration, "script", |bundle| {
+            &bundle.scripts
+        });
+        let modules = collect_asset_refs(registry, &bundle_ids, registration, "module", |bundle| {
+            &bundle.modules
+        });
 
         Ok(AssetGraph {
-            styles: collect_asset_refs(registry, &bundle_ids, page, "style", |bundle| {
-                &bundle.styles
-            }),
-            scripts: collect_asset_refs(registry, &bundle_ids, page, "script", |bundle| {
-                &bundle.scripts
-            }),
-            modules: collect_asset_refs(registry, &bundle_ids, page, "module", |bundle| {
-                &bundle.modules
-            }),
+            styles,
+            scripts,
+            island_boot: build_island_boot(page, &modules)?,
+            modules,
             ..AssetGraph::default()
         })
     }
+}
+
+fn build_island_boot(
+    page: &PageDocument,
+    modules: &[AssetReference],
+) -> Result<Vec<IslandBootSpec>> {
+    if page.islands.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let module = modules.first().ok_or_else(|| Error::ValidationError {
+        message: format!(
+            "interactive page {} must declare at least one module asset",
+            page.route_id
+        ),
+        details: None,
+    })?;
+
+    Ok(page
+        .islands
+        .iter()
+        .map(|island| IslandBootSpec {
+            island_id: island.id.clone(),
+            module: module.href.clone(),
+            props: island.props.clone(),
+        })
+        .collect())
 }
 
 fn collect_asset_refs<F>(
@@ -90,9 +125,10 @@ fn bundle_applies_to_public_page(
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use cycms_host_types::{
-        CompiledExtensionRegistry, OwnershipMode, PublicPageRegistration, RegistrationOriginKind,
-        RegistrationSource,
+        CompiledExtensionRegistry, OwnershipMode, RegistrationOriginKind, RegistrationSource,
     };
     use cycms_plugin_manager::HostRegistry;
 
@@ -104,6 +140,26 @@ mod tests {
             plugin_version: "0.1.0".to_owned(),
             origin: RegistrationOriginKind::HostManifest,
             declaration_order: order,
+        }
+    }
+
+    fn page_document(islands: Vec<IslandMount>) -> PageDocument {
+        PageDocument {
+            route_id: "public:/blog".to_owned(),
+            status: StatusCode::OK,
+            head: vec![HeadNode::Title {
+                text: "Blog".to_owned(),
+            }],
+            body: vec![PageNode::Html(HtmlNode {
+                tag: "main".to_owned(),
+                attributes: Default::default(),
+                children: vec![PageNode::Text(TextNode {
+                    value: "Blog".to_owned(),
+                })],
+            })],
+            actions: Vec::new(),
+            islands,
+            cache_tags: Vec::new(),
         }
     }
 
@@ -159,9 +215,10 @@ mod tests {
             ..CompiledExtensionRegistry::default()
         });
 
-        let page = registry.compiled().public_pages.first().unwrap();
+        let page = page_document(Vec::new());
+        let registration = registry.compiled().public_pages.first().unwrap();
         let graph = DefaultAssetGraphBuilder
-            .build_public_page(page, &registry)
+            .build_public_page(&page, registration, &registry)
             .unwrap();
 
         assert_eq!(
@@ -188,6 +245,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["/assets/legacy.js"]
         );
+        assert!(graph.island_boot.is_empty());
     }
 
     #[test]
@@ -215,15 +273,17 @@ mod tests {
             ..CompiledExtensionRegistry::default()
         });
 
-        let page = registry.compiled().public_pages.first().unwrap();
+        let page = page_document(Vec::new());
+        let registration = registry.compiled().public_pages.first().unwrap();
         let graph = DefaultAssetGraphBuilder
-            .build_public_page(page, &registry)
+            .build_public_page(&page, registration, &registry)
             .unwrap();
 
         assert_eq!(graph.styles.len(), 1);
         assert_eq!(graph.styles[0].href, "/assets/shared.css");
         assert_eq!(graph.modules.len(), 1);
         assert_eq!(graph.modules[0].href, "/assets/shared.js");
+        assert!(graph.island_boot.is_empty());
     }
 
     #[test]
@@ -242,9 +302,10 @@ mod tests {
             ..CompiledExtensionRegistry::default()
         });
 
-        let page = registry.compiled().public_pages.first().unwrap();
+        let page = page_document(Vec::new());
+        let registration = registry.compiled().public_pages.first().unwrap();
         let graph = DefaultAssetGraphBuilder
-            .build_public_page(page, &registry)
+            .build_public_page(&page, registration, &registry)
             .unwrap();
 
         assert!(graph.styles.is_empty());
@@ -252,5 +313,89 @@ mod tests {
         assert!(graph.modules.is_empty());
         assert!(graph.inline_data.is_empty());
         assert!(graph.island_boot.is_empty());
+    }
+
+    #[test]
+    fn interactive_page_generates_island_boot_payloads_from_first_module() {
+        let registry = HostRegistry::new(CompiledExtensionRegistry {
+            public_pages: vec![PublicPageRegistration {
+                id: "blog-home".to_owned(),
+                source: source(0),
+                path: "/blog".to_owned(),
+                priority: 0,
+                ownership: OwnershipMode::Replace,
+                handler: "blog::public::home".to_owned(),
+                title: Some("Blog".to_owned()),
+                asset_bundle_ids: vec!["blog-main".to_owned()],
+            }],
+            assets: vec![AssetBundleRegistration {
+                id: "blog-main".to_owned(),
+                source: source(1),
+                apply_to: vec!["public_page".to_owned()],
+                modules: vec!["/assets/blog-entry.js".to_owned()],
+                scripts: Vec::new(),
+                styles: Vec::new(),
+                inline_data_keys: Vec::new(),
+            }],
+            ..CompiledExtensionRegistry::default()
+        });
+
+        let page = page_document(vec![IslandMount {
+            id: "editor".to_owned(),
+            component: "EditorIsland".to_owned(),
+            props: json!({"entryId": "post-1"}),
+        }]);
+        let registration = registry.compiled().public_pages.first().unwrap();
+        let graph = DefaultAssetGraphBuilder
+            .build_public_page(&page, registration, &registry)
+            .unwrap();
+
+        assert_eq!(graph.island_boot.len(), 1);
+        assert_eq!(graph.island_boot[0].island_id, "editor");
+        assert_eq!(graph.island_boot[0].module, "/assets/blog-entry.js");
+        assert_eq!(graph.island_boot[0].props, json!({"entryId": "post-1"}));
+    }
+
+    #[test]
+    fn interactive_page_without_module_asset_returns_validation_error() {
+        let registry = HostRegistry::new(CompiledExtensionRegistry {
+            public_pages: vec![PublicPageRegistration {
+                id: "blog-home".to_owned(),
+                source: source(0),
+                path: "/blog".to_owned(),
+                priority: 0,
+                ownership: OwnershipMode::Replace,
+                handler: "blog::public::home".to_owned(),
+                title: Some("Blog".to_owned()),
+                asset_bundle_ids: vec!["blog-main".to_owned()],
+            }],
+            assets: vec![AssetBundleRegistration {
+                id: "blog-main".to_owned(),
+                source: source(1),
+                apply_to: vec!["public_page".to_owned()],
+                modules: Vec::new(),
+                scripts: Vec::new(),
+                styles: Vec::new(),
+                inline_data_keys: Vec::new(),
+            }],
+            ..CompiledExtensionRegistry::default()
+        });
+
+        let page = page_document(vec![IslandMount {
+            id: "editor".to_owned(),
+            component: "EditorIsland".to_owned(),
+            props: json!({"entryId": "post-1"}),
+        }]);
+        let registration = registry.compiled().public_pages.first().unwrap();
+        let error = DefaultAssetGraphBuilder
+            .build_public_page(&page, registration, &registry)
+            .unwrap_err();
+
+        assert!(matches!(error, Error::ValidationError { .. }));
+        assert!(
+            error
+                .to_string()
+                .contains("interactive page public:/blog must declare at least one module asset")
+        );
     }
 }
