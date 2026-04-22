@@ -788,6 +788,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cycms-admin-shell"
+version = "0.1.1"
+dependencies = [
+ "cycms-host-types",
+ "cycms-plugin-manager",
+ "http",
+ "serde_json",
+]
+
+[[package]]
 name = "cycms-api"
 version = "0.1.1"
 dependencies = [
@@ -973,6 +983,7 @@ name = "cycms-kernel"
 version = "0.1.1"
 dependencies = [
  "axum",
+ "cycms-admin-shell",
  "cycms-api",
  "cycms-auth",
  "cycms-config",

@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/cycms-core",
+    "crates/cycms-admin-shell",
     "crates/cycms-host-types",
     "crates/cycms-render",
     "crates/cycms-kernel",
@@ -72,6 +73,7 @@ tempfile = "3"
 jsonschema = { version = "0.46.1", default-features = false }
 
 cycms-core = { path = "crates/cycms-core" }
+cycms-admin-shell = { path = "crates/cycms-admin-shell" }
 cycms-host-types = { path = "crates/cycms-host-types" }
 cycms-render = { path = "crates/cycms-render" }
 cycms-kernel = { path = "crates/cycms-kernel" }

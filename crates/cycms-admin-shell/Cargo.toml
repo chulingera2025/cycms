@@ -1,0 +1,15 @@
+[package]
+name = "cycms-admin-shell"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+cycms-host-types = { workspace = true }
+cycms-plugin-manager = { workspace = true }
+http = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
