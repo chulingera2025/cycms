@@ -42,7 +42,13 @@ async fn seed_creates_blog_preset_with_expected_shape() {
     let category_field_ids: Vec<&str> = category.fields.iter().map(|f| f.api_id.as_str()).collect();
     assert_eq!(
         category_field_ids,
-        vec!["name", "description", "cover_image", "seo_title", "seo_description"]
+        vec![
+            "name",
+            "description",
+            "cover_image",
+            "seo_title",
+            "seo_description"
+        ]
     );
 
     let tag = reg.get_type("tag").await.unwrap().unwrap();
@@ -55,7 +61,13 @@ async fn seed_creates_blog_preset_with_expected_shape() {
     let page_field_ids: Vec<&str> = page.fields.iter().map(|f| f.api_id.as_str()).collect();
     assert_eq!(
         page_field_ids,
-        vec!["title", "cover_image", "body", "seo_title", "seo_description"]
+        vec![
+            "title",
+            "cover_image",
+            "body",
+            "seo_title",
+            "seo_description"
+        ]
     );
 
     let post = reg.get_type("post").await.unwrap().unwrap();
@@ -78,7 +90,11 @@ async fn seed_creates_blog_preset_with_expected_shape() {
 
     let site_settings = reg.get_type("site_settings").await.unwrap().unwrap();
     assert_eq!(site_settings.kind, ContentTypeKind::Single);
-    let settings_field_ids: Vec<&str> = site_settings.fields.iter().map(|f| f.api_id.as_str()).collect();
+    let settings_field_ids: Vec<&str> = site_settings
+        .fields
+        .iter()
+        .map(|f| f.api_id.as_str())
+        .collect();
     assert_eq!(
         settings_field_ids,
         vec![

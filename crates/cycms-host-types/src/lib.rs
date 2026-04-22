@@ -519,6 +519,10 @@ pub struct IslandMount {
     pub id: String,
     pub component: String,
     pub props: Value,
+    /// Per-island module URL override. When set, `build_island_boot` uses this
+    /// URL directly instead of the page-level asset bundle module.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -609,6 +613,7 @@ mod tests {
                 id: "editor".to_owned(),
                 component: "EditorIsland".to_owned(),
                 props: json!({ "entryId": "post-1" }),
+                module_url: None,
             }],
             cache_tags: vec!["post:1".to_owned()],
         };

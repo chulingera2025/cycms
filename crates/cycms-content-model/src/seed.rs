@@ -55,7 +55,13 @@ fn category_input() -> CreateContentTypeInput {
         description: Some("Blog categories used to group posts".into()),
         kind: ContentTypeKind::Collection,
         fields: vec![
-            text_field("Name", "name", true, 0, vec![ValidationRule::MaxLength { value: 120 }]),
+            text_field(
+                "Name",
+                "name",
+                true,
+                0,
+                vec![ValidationRule::MaxLength { value: 120 }],
+            ),
             text_field(
                 "Description",
                 "description",
@@ -89,7 +95,13 @@ fn tag_input() -> CreateContentTypeInput {
         description: Some("Blog tags used for lightweight topic grouping".into()),
         kind: ContentTypeKind::Collection,
         fields: vec![
-            text_field("Name", "name", true, 0, vec![ValidationRule::MaxLength { value: 120 }]),
+            text_field(
+                "Name",
+                "name",
+                true,
+                0,
+                vec![ValidationRule::MaxLength { value: 120 }],
+            ),
             text_field(
                 "Description",
                 "description",
@@ -108,7 +120,13 @@ fn page_input() -> CreateContentTypeInput {
         description: Some("Static pages for site navigation and evergreen content".into()),
         kind: ContentTypeKind::Collection,
         fields: vec![
-            text_field("Title", "title", true, 0, vec![ValidationRule::MaxLength { value: 255 }]),
+            text_field(
+                "Title",
+                "title",
+                true,
+                0,
+                vec![ValidationRule::MaxLength { value: 255 }],
+            ),
             media_field("Cover Image", "cover_image", 1),
             richtext_field("Body", "body", true, 2),
             text_field(
@@ -136,7 +154,13 @@ fn post_input() -> CreateContentTypeInput {
         description: Some("Blog post collection".into()),
         kind: ContentTypeKind::Collection,
         fields: vec![
-            text_field("Title", "title", true, 0, vec![ValidationRule::MaxLength { value: 255 }]),
+            text_field(
+                "Title",
+                "title",
+                true,
+                0,
+                vec![ValidationRule::MaxLength { value: 255 }],
+            ),
             text_field(
                 "Excerpt",
                 "excerpt",
@@ -154,14 +178,7 @@ fn post_input() -> CreateContentTypeInput {
                 false,
                 4,
             ),
-            relation_field(
-                "Tags",
-                "tags",
-                "tag",
-                RelationKind::ManyToMany,
-                false,
-                5,
-            ),
+            relation_field("Tags", "tags", "tag", RelationKind::ManyToMany, false, 5),
             boolean_field("Featured", "featured", false, 6, Some(false)),
             text_field(
                 "SEO Title",

@@ -6,7 +6,7 @@ use cycms_host_types::{
 };
 use cycms_plugin_manager::{ADMIN_SHELL_SDK_VERSION, HostRegistry};
 use http::StatusCode;
-use serde_json::json;
+use serde_json::{Value, json};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdminShellDiagnostic {
@@ -52,7 +52,9 @@ impl AdminShellRenderer for DefaultAdminShellRenderer {
                     props: json!({
                         "path": page.path,
                         "mode": shell_mode,
+                        "pageTitle": page.title,
                     }),
+                    module_url: None,
                 })
             }
         };
@@ -86,6 +88,33 @@ impl AdminShellRenderer for DefaultAdminShellRenderer {
             body_children.push(PageNode::Island(mount));
         }
 
+        let mut preload_items = vec![InlineDataAsset {
+            id: format!("admin-preload:{}", page.id),
+            value: json!({
+                "pageId": page.id,
+                "path": page.path,
+                "mode": shell_mode,
+                "plugin": page.source.plugin_name,
+                "sdkVersion": ADMIN_SHELL_SDK_VERSION,
+                "breadcrumbs": breadcrumbs
+                    .iter()
+                    .map(|crumb| json!({
+                        "label": crumb.label,
+                        "href": crumb.href,
+                    }))
+                    .collect::<Vec<_>>(),
+            }),
+        }];
+        if matches!(
+            page.mode,
+            AdminPageMode::Island | AdminPageMode::Hybrid | AdminPageMode::Compatibility
+        ) {
+            preload_items.push(InlineDataAsset {
+                id: "editor-registry".to_owned(),
+                value: build_editor_registry_value(registry),
+            });
+        }
+
         AdminShellOutput {
             page: PageDocument {
                 route_id: format!("admin:{}", page.path),
@@ -113,23 +142,7 @@ impl AdminShellRenderer for DefaultAdminShellRenderer {
                 islands: island.into_iter().collect(),
                 cache_tags: vec![format!("plugin:{}", page.source.plugin_name)],
             },
-            preload: vec![InlineDataAsset {
-                id: format!("admin-preload:{}", page.id),
-                value: json!({
-                    "pageId": page.id,
-                    "path": page.path,
-                    "mode": shell_mode,
-                    "plugin": page.source.plugin_name,
-                    "sdkVersion": ADMIN_SHELL_SDK_VERSION,
-                    "breadcrumbs": breadcrumbs
-                        .iter()
-                        .map(|crumb| json!({
-                            "label": crumb.label,
-                            "href": crumb.href,
-                        }))
-                        .collect::<Vec<_>>(),
-                }),
-            }],
+            preload: preload_items,
             diagnostics: Vec::new(),
         }
     }
@@ -288,6 +301,52 @@ fn admin_page_mode_name(mode: AdminPageMode) -> &'static str {
     }
 }
 
+fn build_editor_registry_value(registry: &HostRegistry) -> Value {
+    let entries = registry
+        .compiled()
+        .editors
+        .iter()
+        .map(|editor| {
+            let modules: Vec<String> = editor
+                .asset_bundle_ids
+                .iter()
+                .flat_map(|bundle_id| {
+                    let bundle_id = bundle_id.clone();
+                    registry
+                        .compiled()
+                        .assets
+                        .iter()
+                        .filter(move |bundle| bundle.id == bundle_id)
+                        .flat_map(|bundle| bundle.modules.clone())
+                })
+                .collect();
+            let styles: Vec<String> = editor
+                .asset_bundle_ids
+                .iter()
+                .flat_map(|bundle_id| {
+                    let bundle_id = bundle_id.clone();
+                    registry
+                        .compiled()
+                        .assets
+                        .iter()
+                        .filter(move |bundle| bundle.id == bundle_id)
+                        .flat_map(|bundle| bundle.styles.clone())
+                })
+                .collect();
+            json!({
+                "id": editor.id,
+                "editor": editor.editor,
+                "contentTypes": editor.content_types,
+                "fieldTypes": editor.field_types,
+                "screenTargets": editor.screen_targets,
+                "modules": modules,
+                "styles": styles,
+            })
+        })
+        .collect::<Vec<_>>();
+    json!(entries)
+}
+
 #[cfg(test)]
 mod tests {
     use cycms_host_types::{
@@ -338,7 +397,8 @@ mod tests {
 
         assert_eq!(output.page.head.len(), 3);
         assert_eq!(output.page.islands.len(), 1);
-        assert_eq!(output.preload.len(), 1);
+        // Compatibility 模式 emit admin-preload + editor-registry
+        assert_eq!(output.preload.len(), 2);
         assert!(output.diagnostics.is_empty());
 
         let PageNode::Html(main) = &output.page.body[0] else {

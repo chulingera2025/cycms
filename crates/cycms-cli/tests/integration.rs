@@ -34,9 +34,12 @@ fn write_config(root: &Path, port: Option<u16>) -> PathBuf {
     fs::create_dir_all(&uploads_dir).unwrap();
     fs::create_dir_all(&plugins_dir).unwrap();
 
-    let server_section = port.map_or_else(String::new, |port| {
-        format!("\n[server]\nhost = \"127.0.0.1\"\nport = {port}\nconnect_timeout_secs = 5\n")
-    });
+    let server_section = port.map_or_else(
+        || "\n[server]\nhost = \"127.0.0.1\"\n".to_string(),
+        |port| {
+            format!("\n[server]\nhost = \"127.0.0.1\"\nport = {port}\nconnect_timeout_secs = 5\n")
+        },
+    );
 
     fs::write(
         &config_path,
@@ -131,7 +134,11 @@ asset_bundle_ids = ["{name}-admin"]
     )
     .unwrap();
     fs::create_dir_all(plugin_dir.join("admin")).unwrap();
-    fs::write(plugin_dir.join("admin").join(format!("{name}.css")), ".plugin{}\n").unwrap();
+    fs::write(
+        plugin_dir.join("admin").join(format!("{name}.css")),
+        ".plugin{}\n",
+    )
+    .unwrap();
     fs::write(plugin_dir.join(format!("{name}.so")), []).unwrap();
     plugin_dir
 }
@@ -306,16 +313,23 @@ async fn seed_command_creates_admin_roles_and_default_content_types() {
         .await
         .unwrap();
     assert!(roles.iter().any(|role| role.name == SUPER_ADMIN_ROLE));
-    assert!(ctx.content_model.get_type("category").await.unwrap().is_some());
+    assert!(
+        ctx.content_model
+            .get_type("category")
+            .await
+            .unwrap()
+            .is_some()
+    );
     assert!(ctx.content_model.get_type("tag").await.unwrap().is_some());
     assert!(ctx.content_model.get_type("page").await.unwrap().is_some());
     assert!(ctx.content_model.get_type("post").await.unwrap().is_some());
-    assert!(ctx
-        .content_model
-        .get_type("site_settings")
-        .await
-        .unwrap()
-        .is_some());
+    assert!(
+        ctx.content_model
+            .get_type("site_settings")
+            .await
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[tokio::test]

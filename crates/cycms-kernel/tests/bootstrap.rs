@@ -145,7 +145,12 @@ audit_enabled = false
         .unwrap();
 
     // ContentModel 已挂入上下文并完成默认博客预设。
-    let category = ctx.content_model.get_type("category").await.unwrap().unwrap();
+    let category = ctx
+        .content_model
+        .get_type("category")
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(category.kind, ContentTypeKind::Collection);
     let page = ctx.content_model.get_type("page").await.unwrap().unwrap();
     assert_eq!(page.kind, ContentTypeKind::Collection);

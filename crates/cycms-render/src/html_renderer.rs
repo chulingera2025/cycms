@@ -317,6 +317,7 @@ mod tests {
                     id: "editor".to_owned(),
                     component: "EditorIsland".to_owned(),
                     props: json!({ "entryId": "post-1" }),
+                    module_url: None,
                 }),
             ],
             actions: vec![PageAction {

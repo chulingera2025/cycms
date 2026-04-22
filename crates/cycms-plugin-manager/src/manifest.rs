@@ -507,7 +507,11 @@ fn validate_host_manifest(host: &HostManifestSpec) -> Result<(), PluginManagerEr
         validate_non_empty_items(&editor.content_types, "host.editors.content_types")?;
         validate_non_empty_items(&editor.field_types, "host.editors.field_types")?;
         validate_non_empty_items(&editor.screen_targets, "host.editors.screen_targets")?;
-        validate_asset_bundle_refs(&asset_ids, &editor.asset_bundle_ids, "host.editors.asset_bundle_ids")?;
+        validate_asset_bundle_refs(
+            &asset_ids,
+            &editor.asset_bundle_ids,
+            "host.editors.asset_bundle_ids",
+        )?;
     }
 
     for item in &host.compatibility {

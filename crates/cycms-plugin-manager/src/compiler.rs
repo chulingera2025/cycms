@@ -3,10 +3,10 @@ use std::path::Path;
 
 use cycms_core::{Error, Result};
 use cycms_host_types::{
-    AdminPageMode, AdminPageRegistration, AssetBundleRegistration, CompiledExtensionRegistry,
-    CompiledPluginDescriptor, CompatibilityKind, CompatibilityRegistration, EditorRegistration,
-    HookRegistration, OwnershipMode, ParserRegistration, PublicPageRegistration,
-    RegistrationOriginKind, RegistrationSource,
+    AdminPageMode, AdminPageRegistration, AssetBundleRegistration, CompatibilityKind,
+    CompatibilityRegistration, CompiledExtensionRegistry, CompiledPluginDescriptor,
+    EditorRegistration, HookRegistration, OwnershipMode, ParserRegistration,
+    PublicPageRegistration, RegistrationOriginKind, RegistrationSource,
 };
 
 use crate::frontend_manifest::load_frontend_manifest;
@@ -56,7 +56,8 @@ impl RegistryCompiler {
 
         if let Some(spec) = &manifest.frontend {
             let frontend_manifest = load_frontend_manifest(&plugin.directory, spec)?;
-            let runtime_state = build_frontend_runtime_state(&plugin.directory, manifest, frontend_manifest)?;
+            let runtime_state =
+                build_frontend_runtime_state(&plugin.directory, manifest, frontend_manifest)?;
             self.ingest_frontend_compatibility(manifest, &runtime_state);
         }
 
@@ -64,7 +65,9 @@ impl RegistryCompiler {
     }
 
     fn finish(mut self) -> CompiledExtensionRegistry {
-        self.registry.plugins.sort_by(|left, right| left.name.cmp(&right.name));
+        self.registry
+            .plugins
+            .sort_by(|left, right| left.name.cmp(&right.name));
         self.registry.public_pages.sort_by(compare_public_page);
         self.registry.admin_pages.sort_by(compare_admin_page);
         self.registry.parsers.sort_by(compare_parser);
@@ -190,7 +193,10 @@ impl RegistryCompiler {
         for asset in &runtime_state.snapshot.assets {
             let mut metadata = shared_metadata.clone();
             metadata.insert("module_path".to_owned(), asset.module_path.clone());
-            metadata.insert("style_count".to_owned(), asset.style_paths.len().to_string());
+            metadata.insert(
+                "style_count".to_owned(),
+                asset.style_paths.len().to_string(),
+            );
             let compatibility = CompatibilityRegistration {
                 id: format!("{}.frontend.asset.{}", manifest.plugin.name, asset.id),
                 source: self.next_source(manifest, RegistrationOriginKind::FrontendCompatibility),
@@ -203,7 +209,8 @@ impl RegistryCompiler {
             if runtime_state.compatibility.compatible {
                 let registration = AssetBundleRegistration {
                     id: compat_asset_bundle_id(&manifest.plugin.name, &asset.id),
-                    source: self.next_source(manifest, RegistrationOriginKind::FrontendCompatibility),
+                    source: self
+                        .next_source(manifest, RegistrationOriginKind::FrontendCompatibility),
                     apply_to: vec!["admin_extension".to_owned()],
                     modules: vec![asset.module_path.clone()],
                     scripts: Vec::new(),
@@ -245,7 +252,8 @@ impl RegistryCompiler {
             if runtime_state.compatibility.compatible {
                 let registration = AdminPageRegistration {
                     id: format!("compat.{}.route.{}", manifest.plugin.name, route.id),
-                    source: self.next_source(manifest, RegistrationOriginKind::FrontendCompatibility),
+                    source: self
+                        .next_source(manifest, RegistrationOriginKind::FrontendCompatibility),
                     path: full_path,
                     title: route.title.clone(),
                     mode: AdminPageMode::Compatibility,
@@ -254,7 +262,10 @@ impl RegistryCompiler {
                     handler: format!("frontend.route:{}", route.id),
                     menu_label: None,
                     menu_zone: None,
-                    asset_bundle_ids: vec![compat_asset_bundle_id(&manifest.plugin.name, &route.module_asset_id)],
+                    asset_bundle_ids: vec![compat_asset_bundle_id(
+                        &manifest.plugin.name,
+                        &route.module_asset_id,
+                    )],
                 };
                 self.registry.admin_pages.push(registration);
             }
@@ -277,9 +288,15 @@ impl RegistryCompiler {
         for renderer in &runtime_state.snapshot.field_renderers {
             let mut metadata = shared_metadata.clone();
             metadata.insert("field_type".to_owned(), renderer.type_name.clone());
-            metadata.insert("module_asset_id".to_owned(), renderer.module_asset_id.clone());
+            metadata.insert(
+                "module_asset_id".to_owned(),
+                renderer.module_asset_id.clone(),
+            );
             let compatibility = CompatibilityRegistration {
-                id: format!("{}.frontend.field_renderer.{}", manifest.plugin.name, renderer.id),
+                id: format!(
+                    "{}.frontend.field_renderer.{}",
+                    manifest.plugin.name, renderer.id
+                ),
                 source: self.next_source(manifest, RegistrationOriginKind::FrontendCompatibility),
                 kind: CompatibilityKind::AdminExtensionFieldRenderer,
                 target: renderer.type_name.clone(),
@@ -289,15 +306,22 @@ impl RegistryCompiler {
 
             if runtime_state.compatibility.compatible {
                 let registration = EditorRegistration {
-                    id: format!("compat.{}.field_renderer.{}", manifest.plugin.name, renderer.id),
-                    source: self.next_source(manifest, RegistrationOriginKind::FrontendCompatibility),
+                    id: format!(
+                        "compat.{}.field_renderer.{}",
+                        manifest.plugin.name, renderer.id
+                    ),
+                    source: self
+                        .next_source(manifest, RegistrationOriginKind::FrontendCompatibility),
                     priority: -100,
                     ownership: OwnershipMode::Replace,
                     editor: format!("frontend.field_renderer:{}", renderer.id),
                     content_types: Vec::new(),
                     field_types: vec![renderer.type_name.clone()],
                     screen_targets: vec!["admin:field_renderer".to_owned()],
-                    asset_bundle_ids: vec![compat_asset_bundle_id(&manifest.plugin.name, &renderer.module_asset_id)],
+                    asset_bundle_ids: vec![compat_asset_bundle_id(
+                        &manifest.plugin.name,
+                        &renderer.module_asset_id,
+                    )],
                 };
                 self.registry.editors.push(registration);
             }
@@ -307,7 +331,10 @@ impl RegistryCompiler {
             let mut metadata = shared_metadata.clone();
             metadata.insert("namespace".to_owned(), settings.namespace.clone());
             let compatibility = CompatibilityRegistration {
-                id: format!("{}.frontend.settings.{}", manifest.plugin.name, settings.namespace),
+                id: format!(
+                    "{}.frontend.settings.{}",
+                    manifest.plugin.name, settings.namespace
+                ),
                 source: self.next_source(manifest, RegistrationOriginKind::FrontendCompatibility),
                 kind: CompatibilityKind::AdminExtensionSettings,
                 target: settings.namespace.clone(),
@@ -319,8 +346,12 @@ impl RegistryCompiler {
                 && let Some(custom_page) = &settings.custom_page
             {
                 let registration = AdminPageRegistration {
-                    id: format!("compat.{}.settings.{}", manifest.plugin.name, settings.namespace),
-                    source: self.next_source(manifest, RegistrationOriginKind::FrontendCompatibility),
+                    id: format!(
+                        "compat.{}.settings.{}",
+                        manifest.plugin.name, settings.namespace
+                    ),
+                    source: self
+                        .next_source(manifest, RegistrationOriginKind::FrontendCompatibility),
                     path: plugin_admin_full_path(&manifest.plugin.name, &custom_page.path),
                     title: format!("{} settings", settings.namespace),
                     mode: AdminPageMode::Compatibility,
@@ -329,7 +360,10 @@ impl RegistryCompiler {
                     handler: format!("frontend.settings:{}", settings.namespace),
                     menu_label: Some(format!("{} settings", settings.namespace)),
                     menu_zone: Some("settings".to_owned()),
-                    asset_bundle_ids: vec![compat_asset_bundle_id(&manifest.plugin.name, &custom_page.module_asset_id)],
+                    asset_bundle_ids: vec![compat_asset_bundle_id(
+                        &manifest.plugin.name,
+                        &custom_page.module_asset_id,
+                    )],
                 };
                 self.registry.admin_pages.push(registration);
             }
@@ -407,14 +441,20 @@ fn compat_asset_bundle_id(plugin_name: &str, asset_id: &str) -> String {
     format!("compat.{plugin_name}.asset.{asset_id}")
 }
 
-fn compare_public_page(left: &PublicPageRegistration, right: &PublicPageRegistration) -> std::cmp::Ordering {
+fn compare_public_page(
+    left: &PublicPageRegistration,
+    right: &PublicPageRegistration,
+) -> std::cmp::Ordering {
     left.path
         .cmp(&right.path)
         .then(left.id.cmp(&right.id))
         .then(left.source.plugin_name.cmp(&right.source.plugin_name))
 }
 
-fn compare_admin_page(left: &AdminPageRegistration, right: &AdminPageRegistration) -> std::cmp::Ordering {
+fn compare_admin_page(
+    left: &AdminPageRegistration,
+    right: &AdminPageRegistration,
+) -> std::cmp::Ordering {
     left.path
         .cmp(&right.path)
         .then(left.id.cmp(&right.id))
@@ -434,7 +474,10 @@ fn compare_hook(left: &HookRegistration, right: &HookRegistration) -> std::cmp::
         .then(left.source.plugin_name.cmp(&right.source.plugin_name))
 }
 
-fn compare_asset(left: &AssetBundleRegistration, right: &AssetBundleRegistration) -> std::cmp::Ordering {
+fn compare_asset(
+    left: &AssetBundleRegistration,
+    right: &AssetBundleRegistration,
+) -> std::cmp::Ordering {
     left.id
         .cmp(&right.id)
         .then(left.source.plugin_name.cmp(&right.source.plugin_name))
@@ -595,7 +638,10 @@ cycms = ">=0.1.0"
         let first = compile_extensions(temp.path()).unwrap();
         let second = compile_extensions(temp.path()).unwrap();
 
-        assert_eq!(serde_json::to_string(&first).unwrap(), serde_json::to_string(&second).unwrap());
+        assert_eq!(
+            serde_json::to_string(&first).unwrap(),
+            serde_json::to_string(&second).unwrap()
+        );
         assert_eq!(first.plugins.len(), 2);
         assert_eq!(first.public_pages.len(), 1);
         assert_eq!(first.admin_pages.len(), 2);
@@ -603,17 +649,24 @@ cycms = ">=0.1.0"
         assert_eq!(first.hooks.len(), 1);
         assert_eq!(first.assets.len(), 2);
         assert_eq!(first.editors.len(), 2);
-        assert!(first
-            .compatibility
-            .iter()
-            .any(|entry| entry.kind == CompatibilityKind::DynamicNativePlugin));
-        assert!(first
-            .compatibility
-            .iter()
-            .any(|entry| entry.kind == CompatibilityKind::AdminExtensionRoute));
-        assert!(first
-            .admin_pages
-            .iter()
-            .any(|page| page.path == "/admin/x/blog/dashboard" && page.mode == AdminPageMode::Compatibility));
+        assert!(
+            first
+                .compatibility
+                .iter()
+                .any(|entry| entry.kind == CompatibilityKind::DynamicNativePlugin)
+        );
+        assert!(
+            first
+                .compatibility
+                .iter()
+                .any(|entry| entry.kind == CompatibilityKind::AdminExtensionRoute)
+        );
+        assert!(
+            first
+                .admin_pages
+                .iter()
+                .any(|page| page.path == "/admin/x/blog/dashboard"
+                    && page.mode == AdminPageMode::Compatibility)
+        );
     }
 }

@@ -123,25 +123,19 @@ impl DefaultRequestLifecycleEngine {
         trace.push(LifecyclePhase::RouteMatched);
 
         let decision = self.registry.resolve_admin_page(&trace.target);
-        let response = decision
-            .primary
-            .as_ref()
-            .map(|page| {
-                render_owned_admin_page(
-                    page,
-                    self.registry.as_ref(),
-                    self.host_island_runtime_module.as_deref(),
-                )
-            });
+        let response = decision.primary.as_ref().map(|page| {
+            render_owned_admin_page(
+                page,
+                self.registry.as_ref(),
+                self.host_island_runtime_module.as_deref(),
+            )
+        });
 
         AdminLifecycleOutcome { response, trace }
     }
 }
 
-fn render_owned_public_page(
-    page: &PublicPageRegistration,
-    registry: &HostRegistry,
-) -> Response {
+fn render_owned_public_page(page: &PublicPageRegistration, registry: &HostRegistry) -> Response {
     let title = page.title.clone().unwrap_or_else(|| page.path.clone());
     let document = PageDocument {
         route_id: format!("public:{}", page.path),

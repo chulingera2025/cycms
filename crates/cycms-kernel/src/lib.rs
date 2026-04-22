@@ -21,6 +21,10 @@ use cycms_content_model::{ContentModelRegistry, FieldTypeRegistry, seed_default_
 use cycms_core::{Error, Result};
 use cycms_db::DatabasePool;
 use cycms_events::EventBus;
+use cycms_host_types::{
+    AdminPageMode, AdminPageRegistration, AssetBundleRegistration, CompiledExtensionRegistry,
+    OwnershipMode, RegistrationOriginKind, RegistrationSource,
+};
 use cycms_media::MediaManager;
 use cycms_migrate::MigrationEngine;
 use cycms_observability::{AuditLogger, init_tracing, request_span_middleware};
@@ -34,8 +38,8 @@ use cycms_plugin_wasm::WasmPluginRuntime;
 use cycms_publish::PublishManager;
 use cycms_revision::RevisionManager;
 use cycms_settings::SettingsManager;
-use serde_json::Value;
 use semver::Version;
+use serde_json::Value;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tower::{ServiceBuilder, ServiceExt};
@@ -179,7 +183,10 @@ impl Kernel {
             })?;
         let plugins_root =
             resolve_plugins_root(self.config_path.as_deref(), &self.config.plugins.directory);
-        let host_registry = Arc::new(HostRegistry::new(compile_extensions(&plugins_root)?));
+        let web_dist_for_registry = resolve_web_dist_dir(self.config_path.as_deref());
+        let compiled = compile_extensions(&plugins_root)?;
+        let compiled = inject_native_admin_island_pages(compiled, &web_dist_for_registry);
+        let host_registry = Arc::new(HostRegistry::new(compiled));
         let native_runtime = Arc::new(NativePluginRuntime::new());
         let native_as_trait: Arc<dyn PluginRuntime> =
             Arc::clone(&native_runtime) as Arc<dyn PluginRuntime>;
@@ -407,6 +414,7 @@ fn build_api_state(ctx: &AppContext) -> Arc<cycms_api::ApiState> {
         Arc::clone(&ctx.native_runtime),
         Arc::clone(&ctx.wasm_runtime),
         admin_extension_events,
+        Arc::clone(&ctx.host_registry),
     ))
 }
 
@@ -609,6 +617,87 @@ fn build_admin_fallback_router(
                 host_island_runtime_module,
             ),
         })
+}
+
+/// 将 CyCMS 内置 island admin 页面（content-workspace、media-workspace）注入
+/// 已编译的扩展注册表。仅在 Vite 产物存在时注入，dist 不存在时跳过。
+fn inject_native_admin_island_pages(
+    mut compiled: CompiledExtensionRegistry,
+    web_dist: &Path,
+) -> CompiledExtensionRegistry {
+    let source = RegistrationSource {
+        plugin_name: "cycms".to_owned(),
+        plugin_version: env!("CARGO_PKG_VERSION").to_owned(),
+        origin: RegistrationOriginKind::HostManifest,
+        declaration_order: 0,
+    };
+
+    struct NativeIsland {
+        bundle_id: &'static str,
+        page_id: &'static str,
+        path: &'static str,
+        title: &'static str,
+        menu_label: &'static str,
+        menu_zone: &'static str,
+        manifest_key: &'static str,
+        stable_name: &'static str,
+    }
+
+    let natives = [
+        NativeIsland {
+            bundle_id: "cycms:native:content-workspace",
+            page_id: "cycms:content-management",
+            path: "/admin/content",
+            title: "内容管理",
+            menu_label: "内容管理",
+            menu_zone: "content",
+            manifest_key: "src/islands/content-workspace.tsx",
+            stable_name: "admin-content-workspace",
+        },
+        NativeIsland {
+            bundle_id: "cycms:native:media-workspace",
+            page_id: "cycms:media-management",
+            path: "/admin/media",
+            title: "媒体管理",
+            menu_label: "媒体管理",
+            menu_zone: "media",
+            manifest_key: "src/islands/media-workspace.tsx",
+            stable_name: "admin-media-workspace",
+        },
+    ];
+
+    for island in &natives {
+        let Some(module_url) =
+            resolve_host_island_entry_module(web_dist, island.manifest_key, island.stable_name)
+        else {
+            continue;
+        };
+
+        compiled.assets.push(AssetBundleRegistration {
+            id: island.bundle_id.to_owned(),
+            source: source.clone(),
+            apply_to: vec![island.page_id.to_owned()],
+            modules: vec![module_url],
+            scripts: Vec::new(),
+            styles: Vec::new(),
+            inline_data_keys: Vec::new(),
+        });
+        compiled.admin_pages.push(AdminPageRegistration {
+            id: island.page_id.to_owned(),
+            source: source.clone(),
+            path: island.path.to_owned(),
+            title: island.title.to_owned(),
+            mode: AdminPageMode::Island,
+            priority: 0,
+            ownership: OwnershipMode::Replace,
+            handler: format!("cycms:native-island:{}", island.stable_name),
+            menu_label: Some(island.menu_label.to_owned()),
+            menu_zone: Some(island.menu_zone.to_owned()),
+            asset_bundle_ids: vec![island.bundle_id.to_owned()],
+        });
+    }
+
+    compiled
 }
 
 fn resolve_host_island_runtime_module(web_dist: &Path) -> Option<String> {
@@ -991,7 +1080,10 @@ mod tests {
             "admin-media-workspace",
         );
 
-        assert_eq!(resolved, Some("/assets/admin-media-workspace.js".to_owned()));
+        assert_eq!(
+            resolved,
+            Some("/assets/admin-media-workspace.js".to_owned())
+        );
     }
 
     #[tokio::test]

@@ -109,27 +109,28 @@ fn build_island_boot(
     page: &PageDocument,
     modules: &[AssetReference],
 ) -> Result<Vec<IslandBootSpec>> {
-    if page.islands.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let module = modules.first().ok_or_else(|| Error::ValidationError {
-        message: format!(
-            "interactive page {} must declare at least one module asset",
-            page.route_id
-        ),
-        details: None,
-    })?;
-
-    Ok(page
-        .islands
+    page.islands
         .iter()
-        .map(|island| IslandBootSpec {
-            island_id: island.id.clone(),
-            module: module.href.clone(),
-            props: island.props.clone(),
+        .map(|island| {
+            let module = island
+                .module_url
+                .as_deref()
+                .map(str::to_owned)
+                .or_else(|| modules.first().map(|m| m.href.clone()))
+                .ok_or_else(|| Error::ValidationError {
+                    message: format!(
+                        "page {} island {} must declare a module_url or the page must register at least one module asset",
+                        page.route_id, island.id
+                    ),
+                    details: None,
+                })?;
+            Ok(IslandBootSpec {
+                island_id: island.id.clone(),
+                module,
+                props: island.props.clone(),
+            })
         })
-        .collect())
+        .collect()
 }
 
 fn collect_asset_refs<F, G>(
@@ -416,6 +417,7 @@ mod tests {
                 id: "editor".to_owned(),
                 component: "EditorIsland".to_owned(),
                 props: json!({"entryId": "post-1"}),
+                module_url: None,
             }],
         );
         let registration = registry.compiled().public_pages.first().unwrap();
@@ -460,6 +462,7 @@ mod tests {
                 id: "editor".to_owned(),
                 component: "EditorIsland".to_owned(),
                 props: json!({"entryId": "post-1"}),
+                module_url: None,
             }],
         );
         let registration = registry.compiled().public_pages.first().unwrap();
@@ -468,11 +471,9 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, Error::ValidationError { .. }));
-        assert!(
-            error
-                .to_string()
-                .contains("interactive page public:/blog must declare at least one module asset")
-        );
+        assert!(error.to_string().contains(
+            "must declare a module_url or the page must register at least one module asset"
+        ));
     }
 
     #[test]
@@ -548,6 +549,7 @@ mod tests {
                 id: "admin-screen:compat.blog.route.root".to_owned(),
                 component: "frontend.route:root".to_owned(),
                 props: json!({"path": "/admin/x/blog/dashboard"}),
+                module_url: None,
             }],
         );
         let registration = registry.compiled().admin_pages.first().unwrap();
@@ -606,6 +608,7 @@ mod tests {
                 id: "admin-screen:blog-dashboard".to_owned(),
                 component: "frontend.route:root".to_owned(),
                 props: json!({"path": "/admin/x/blog/dashboard"}),
+                module_url: None,
             }],
         );
         let registration = registry.compiled().admin_pages.first().unwrap();
@@ -653,6 +656,7 @@ mod tests {
                 id: "admin-screen:blog-dashboard".to_owned(),
                 component: "blog::admin::dashboard".to_owned(),
                 props: json!({"path": "/admin/x/blog/dashboard"}),
+                module_url: None,
             }],
         );
         let registration = registry.compiled().admin_pages.first().unwrap();

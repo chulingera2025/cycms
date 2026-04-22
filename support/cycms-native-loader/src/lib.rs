@@ -28,9 +28,7 @@ pub enum DynamicPluginLoadError {
         source: libloading::Error,
     },
     /// 工厂函数返回了空指针。
-    NullFactoryReturn {
-        path: PathBuf,
-    },
+    NullFactoryReturn { path: PathBuf },
 }
 
 impl DynamicPluginLibrary {
@@ -39,11 +37,12 @@ impl DynamicPluginLibrary {
         let path = path.to_path_buf();
         // Safety: 动态库句柄会被 `DynamicPluginLibrary` 持有直到调用方显式 drop，
         // 不会把原始库句柄泄漏到安全 API 之外。
-        let library = unsafe { libloading::Library::new(&path) }
-            .map_err(|source| DynamicPluginLoadError::Open {
+        let library = unsafe { libloading::Library::new(&path) }.map_err(|source| {
+            DynamicPluginLoadError::Open {
                 path: path.clone(),
                 source,
-            })?;
+            }
+        })?;
         Ok(Self { library, path })
     }
 
@@ -52,11 +51,14 @@ impl DynamicPluginLibrary {
         type PluginCreate = unsafe extern "C" fn() -> *mut std::ffi::c_void;
 
         // Safety: 符号名与 ABI 由 `cycms-plugin-api::export_plugin!` 统一约定。
-        let constructor = unsafe { self.library.get::<PluginCreate>(NATIVE_PLUGIN_CREATE_SYMBOL) }
-            .map_err(|source| DynamicPluginLoadError::MissingSymbol {
-                path: self.path.clone(),
-                source,
-            })?;
+        let constructor = unsafe {
+            self.library
+                .get::<PluginCreate>(NATIVE_PLUGIN_CREATE_SYMBOL)
+        }
+        .map_err(|source| DynamicPluginLoadError::MissingSymbol {
+            path: self.path.clone(),
+            source,
+        })?;
 
         // Safety: 上面查到的函数指针遵循相同 ABI，返回宿主接管所有权的插件指针。
         let raw = unsafe { constructor() };
@@ -77,7 +79,11 @@ impl Display for DynamicPluginLoadError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Open { path, source } => {
-                write!(f, "failed to open native plugin {}: {source}", path.display())
+                write!(
+                    f,
+                    "failed to open native plugin {}: {source}",
+                    path.display()
+                )
             }
             Self::MissingSymbol { path, source } => write!(
                 f,

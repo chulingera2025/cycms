@@ -8,9 +8,9 @@
 //! `PluginRuntime` 抽象定义在本 crate 内，`cycms-plugin-native` / `cycms-plugin-wasm`
 //! 反向依赖并实现该 trait，避免循环依赖。
 
+mod compiler;
 mod discovery;
 mod error;
-mod compiler;
 mod frontend_manifest;
 mod frontend_snapshot;
 mod host_registry;
@@ -21,9 +21,9 @@ mod resolver;
 mod runtime;
 mod service;
 
+pub use compiler::compile_extensions;
 pub use discovery::{DiscoveredPlugin, discover_plugin_dir, scan_plugins_dir};
 pub use error::PluginManagerError;
-pub use compiler::compile_extensions;
 pub use frontend_manifest::{
     ADMIN_SHELL_SDK_VERSION, AdminFrontendManifest, ContributionMatchSpec, CustomPageContribution,
     FieldRendererContribution, FrontendAsset, MenuContribution, RouteContribution,
@@ -41,9 +41,9 @@ pub use frontend_snapshot::{
 };
 pub use host_registry::{HostRegistry, RegistryLookup};
 pub use manifest::{
-    AdminPageSpec, AssetBundleSpec, CompatibilityBridgeSpec, CompatibilitySpec,
-    DependencySpec, EditorSpec, FrontendSpec, HookSpec, HostManifestSpec, ParserSpec,
-    PermissionEntry, PermissionsSpec, PluginKind, PluginManifest, PluginMeta, PublicPageSpec,
+    AdminPageSpec, AssetBundleSpec, CompatibilityBridgeSpec, CompatibilitySpec, DependencySpec,
+    EditorSpec, FrontendSpec, HookSpec, HostManifestSpec, ParserSpec, PermissionEntry,
+    PermissionsSpec, PluginKind, PluginManifest, PluginMeta, PublicPageSpec,
 };
 pub use model::{NewPluginRow, PluginRecord, PluginStatus};
 pub use repository::PluginRepository;
