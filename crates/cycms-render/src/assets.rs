@@ -3,8 +3,7 @@ use std::collections::BTreeSet;
 use cycms_core::{Error, Result};
 use cycms_host_types::{
     AdminPageMode, AdminPageRegistration, AssetBundleRegistration, AssetGraph, AssetReference,
-    HeadNode, HtmlNode, IslandBootSpec, IslandMount, PageDocument, PageNode,
-    PublicPageRegistration, TextNode,
+    IslandBootSpec, PageDocument, PublicPageRegistration,
 };
 use cycms_plugin_manager::HostRegistry;
 
@@ -198,7 +197,8 @@ mod tests {
     use serde_json::json;
 
     use cycms_host_types::{
-        CompiledExtensionRegistry, OwnershipMode, RegistrationOriginKind, RegistrationSource,
+        CompiledExtensionRegistry, HeadNode, HtmlNode, IslandMount, OwnershipMode, PageNode,
+        RegistrationOriginKind, RegistrationSource, TextNode,
     };
     use cycms_plugin_manager::HostRegistry;
 
