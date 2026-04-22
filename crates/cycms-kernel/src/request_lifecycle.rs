@@ -5,8 +5,8 @@ use axum::extract::Request;
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use cycms_host_types::{
-    AdminPageMode, AdminPageRegistration, HeadNode, HostRequestTarget, HtmlNode, IslandMount,
-    PageDocument, PageNode, PublicPageRegistration, TextNode,
+    AdminPageMode, AdminPageRegistration, HeadNode, HostRequestTarget, HtmlNode, InlineDataAsset,
+    IslandMount, PageDocument, PageNode, PublicPageRegistration, TextNode,
 };
 use cycms_plugin_manager::{HostRegistry, RegistryLookup};
 use cycms_render::{
@@ -168,6 +168,8 @@ fn render_owned_admin_page(page: &AdminPageRegistration, registry: &HostRegistry
     let shell_mode = admin_page_mode_name(page.mode);
     let title = format!("{} | Admin", page.title);
     let navigation = render_admin_navigation(registry, &page.path);
+    let breadcrumbs = admin_breadcrumbs(page, registry);
+    let breadcrumb_node = render_admin_breadcrumbs(&breadcrumbs);
     let island = match page.mode {
         AdminPageMode::Html => None,
         AdminPageMode::Hybrid | AdminPageMode::Island | AdminPageMode::Compatibility => {
@@ -184,6 +186,7 @@ fn render_owned_admin_page(page: &AdminPageRegistration, registry: &HostRegistry
 
     let mut body_children = vec![
         navigation,
+        breadcrumb_node,
         PageNode::Html(HtmlNode {
             tag: "h1".to_owned(),
             attributes: Default::default(),
@@ -213,7 +216,17 @@ fn render_owned_admin_page(page: &AdminPageRegistration, registry: &HostRegistry
     let document = PageDocument {
         route_id: format!("admin:{}", page.path),
         status: StatusCode::OK,
-        head: vec![HeadNode::Title { text: title }],
+        head: vec![
+            HeadNode::Title { text: title },
+            HeadNode::Meta {
+                name: "cycms-admin-page-id".to_owned(),
+                content: page.id.clone(),
+            },
+            HeadNode::Meta {
+                name: "cycms-admin-mode".to_owned(),
+                content: shell_mode.to_owned(),
+            },
+        ],
         body: vec![PageNode::Html(HtmlNode {
             tag: "main".to_owned(),
             attributes: BTreeMap::from([("data-admin-mode".to_owned(), shell_mode.to_owned())]),
@@ -224,7 +237,25 @@ fn render_owned_admin_page(page: &AdminPageRegistration, registry: &HostRegistry
         cache_tags: vec![format!("plugin:{}", page.source.plugin_name)],
     };
     let assets = match DefaultAssetGraphBuilder.build_admin_page(&document, page, registry) {
-        Ok(assets) => assets,
+        Ok(mut assets) => {
+            assets.inline_data.push(InlineDataAsset {
+                id: format!("admin-preload:{}", page.id),
+                value: json!({
+                    "pageId": page.id,
+                    "path": page.path,
+                    "mode": shell_mode,
+                    "plugin": page.source.plugin_name,
+                    "breadcrumbs": breadcrumbs
+                        .iter()
+                        .map(|crumb| json!({
+                            "label": crumb.label,
+                            "href": crumb.href,
+                        }))
+                        .collect::<Vec<_>>(),
+                }),
+            });
+            assets
+        }
         Err(source) => {
             error!(path = %page.path, handler = %page.handler, error = %source, "failed to build asset graph for host-owned admin page");
             return (
@@ -290,6 +321,88 @@ fn render_admin_navigation(registry: &HostRegistry, current_path: &str) -> PageN
         attributes: BTreeMap::from([("data-admin-nav".to_owned(), "primary".to_owned())]),
         children: group_nodes,
     })
+}
+
+fn render_admin_breadcrumbs(breadcrumbs: &[AdminBreadcrumb]) -> PageNode {
+    let items = breadcrumbs
+        .iter()
+        .enumerate()
+        .map(|(index, breadcrumb)| {
+            let is_current = index + 1 == breadcrumbs.len();
+            let child = if is_current {
+                PageNode::Html(HtmlNode {
+                    tag: "span".to_owned(),
+                    attributes: BTreeMap::from([("aria-current".to_owned(), "page".to_owned())]),
+                    children: vec![PageNode::Text(TextNode {
+                        value: breadcrumb.label.clone(),
+                    })],
+                })
+            } else if let Some(href) = &breadcrumb.href {
+                PageNode::Html(HtmlNode {
+                    tag: "a".to_owned(),
+                    attributes: BTreeMap::from([("href".to_owned(), href.clone())]),
+                    children: vec![PageNode::Text(TextNode {
+                        value: breadcrumb.label.clone(),
+                    })],
+                })
+            } else {
+                PageNode::Text(TextNode {
+                    value: breadcrumb.label.clone(),
+                })
+            };
+
+            PageNode::Html(HtmlNode {
+                tag: "li".to_owned(),
+                attributes: Default::default(),
+                children: vec![child],
+            })
+        })
+        .collect::<Vec<_>>();
+
+    PageNode::Html(HtmlNode {
+        tag: "nav".to_owned(),
+        attributes: BTreeMap::from([
+            ("data-admin-breadcrumbs".to_owned(), "true".to_owned()),
+            ("aria-label".to_owned(), "breadcrumb".to_owned()),
+        ]),
+        children: vec![PageNode::Html(HtmlNode {
+            tag: "ol".to_owned(),
+            attributes: Default::default(),
+            children: items,
+        })],
+    })
+}
+
+#[derive(Debug, Clone)]
+struct AdminBreadcrumb {
+    label: String,
+    href: Option<String>,
+}
+
+fn admin_breadcrumbs(
+    page: &AdminPageRegistration,
+    registry: &HostRegistry,
+) -> Vec<AdminBreadcrumb> {
+    let zone = page
+        .menu_zone
+        .clone()
+        .unwrap_or_else(|| "content".to_owned());
+    let zone_href = registry
+        .admin_menu_tree()
+        .into_iter()
+        .find(|group| group.zone == zone)
+        .and_then(|group| group.entries.into_iter().next().map(|entry| entry.path));
+
+    vec![
+        AdminBreadcrumb {
+            label: zone,
+            href: zone_href,
+        },
+        AdminBreadcrumb {
+            label: page.title.clone(),
+            href: None,
+        },
+    ]
 }
 
 fn normalize_navigation_path(path: &str) -> String {
@@ -511,6 +624,12 @@ mod tests {
         assert!(html.contains("data-admin-nav=\"primary\""));
         assert!(html.contains("Dashboard"));
         assert!(html.contains("aria-current=\"page\""));
+        assert!(html.contains("data-admin-breadcrumbs=\"true\""));
+        assert!(html.contains("aria-label=\"breadcrumb\""));
+        assert!(html.contains("href=\"/admin/x/blog/dashboard\""));
+        assert!(html.contains("Blog Dashboard"));
+        assert!(html.contains("cycms-admin-page-id"));
+        assert!(html.contains("admin-preload:blog-dashboard"));
         assert!(html.contains("data-admin-mode=\"compatibility\""));
         assert!(html.contains("/plugins/blog/admin/main.css"));
         assert!(html.contains("/plugins/blog/admin/main.js"));
