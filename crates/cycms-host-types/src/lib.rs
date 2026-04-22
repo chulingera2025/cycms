@@ -1,8 +1,12 @@
 use std::collections::BTreeMap;
 
+use http::StatusCode;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 pub const COMPILED_EXTENSION_REGISTRY_SCHEMA_VERSION: u32 = 1;
+pub const CONTENT_DOCUMENT_SCHEMA_VERSION: u32 = 1;
+pub const PAGE_DOCUMENT_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -300,4 +304,337 @@ pub struct OwnershipDecision<T> {
     pub wrappers: Vec<T>,
     pub appenders: Vec<T>,
     pub diagnostics: OwnershipDiagnostics,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentDiagnosticSeverity {
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentDiagnostic {
+    pub severity: ContentDiagnosticSeverity,
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentSourceMeta {
+    pub format: String,
+    pub parser_id: String,
+    pub origin_field: Option<String>,
+    pub content_type: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeadingNode {
+    pub level: u8,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParagraphNode {
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockNode {
+    pub kind: String,
+    pub data: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlotCallNode {
+    pub slot: String,
+    #[serde(default)]
+    pub arguments: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmbedNode {
+    pub url: String,
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ContentNode {
+    Heading(HeadingNode),
+    Paragraph(ParagraphNode),
+    Block(BlockNode),
+    SlotCall(SlotCallNode),
+    Embed(EmbedNode),
+    RawHtml(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentDocument {
+    pub schema_version: u32,
+    pub source: ContentSourceMeta,
+    #[serde(default)]
+    pub nodes: Vec<ContentNode>,
+    #[serde(default)]
+    pub diagnostics: Vec<ContentDiagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HeadNode {
+    Title { text: String },
+    Meta { name: String, content: String },
+    Link { rel: String, href: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageAction {
+    pub id: String,
+    pub label: String,
+    pub method: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetReference {
+    pub id: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InlineDataAsset {
+    pub id: String,
+    pub value: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IslandBootSpec {
+    pub island_id: String,
+    pub module: String,
+    pub props: Value,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetGraph {
+    #[serde(default)]
+    pub styles: Vec<AssetReference>,
+    #[serde(default)]
+    pub scripts: Vec<AssetReference>,
+    #[serde(default)]
+    pub modules: Vec<AssetReference>,
+    #[serde(default)]
+    pub inline_data: Vec<InlineDataAsset>,
+    #[serde(default)]
+    pub island_boot: Vec<IslandBootSpec>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutNode {
+    pub name: String,
+    #[serde(default)]
+    pub children: Vec<PageNode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegionNode {
+    pub name: String,
+    #[serde(default)]
+    pub children: Vec<PageNode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FragmentNode {
+    #[serde(default)]
+    pub children: Vec<PageNode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HtmlNode {
+    pub tag: String,
+    #[serde(default)]
+    pub attributes: BTreeMap<String, String>,
+    #[serde(default)]
+    pub children: Vec<PageNode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextNode {
+    pub value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlotOutletNode {
+    pub slot: String,
+    #[serde(default)]
+    pub fallback: Vec<PageNode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentOutletNode {
+    pub content: ContentDocument,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IslandMount {
+    pub id: String,
+    pub component: String,
+    pub props: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PageNode {
+    Layout(LayoutNode),
+    Region(RegionNode),
+    Fragment(FragmentNode),
+    Html(HtmlNode),
+    Text(TextNode),
+    SlotOutlet(SlotOutletNode),
+    ContentOutlet(ContentOutletNode),
+    Island(IslandMount),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageDocument {
+    pub route_id: String,
+    #[serde(with = "status_code_serde")]
+    pub status: StatusCode,
+    #[serde(default)]
+    pub head: Vec<HeadNode>,
+    #[serde(default)]
+    pub body: Vec<PageNode>,
+    #[serde(default)]
+    pub actions: Vec<PageAction>,
+    #[serde(default)]
+    pub islands: Vec<IslandMount>,
+    #[serde(default)]
+    pub cache_tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderedPage {
+    #[serde(with = "status_code_serde")]
+    pub status: StatusCode,
+    pub html: String,
+    pub assets: AssetGraph,
+}
+
+mod status_code_serde {
+    use http::StatusCode;
+    use serde::{Deserialize, Deserializer, Serializer, de::Error as _};
+
+    pub fn serialize<S>(value: &StatusCode, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u16(value.as_u16())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<StatusCode, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let code = u16::deserialize(deserializer)?;
+        StatusCode::from_u16(code).map_err(D::Error::custom)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use http::StatusCode;
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn page_document_status_round_trips_as_u16() {
+        let page = PageDocument {
+            route_id: "post.show".to_owned(),
+            status: StatusCode::CREATED,
+            head: vec![HeadNode::Title {
+                text: "Hello".to_owned(),
+            }],
+            body: vec![PageNode::Text(TextNode {
+                value: "Body".to_owned(),
+            })],
+            actions: vec![PageAction {
+                id: "publish".to_owned(),
+                label: "Publish".to_owned(),
+                method: "post".to_owned(),
+                href: "/actions/publish".to_owned(),
+            }],
+            islands: vec![IslandMount {
+                id: "editor".to_owned(),
+                component: "EditorIsland".to_owned(),
+                props: json!({ "entryId": "post-1" }),
+            }],
+            cache_tags: vec!["post:1".to_owned()],
+        };
+
+        let value = serde_json::to_value(&page).unwrap();
+        assert_eq!(value.get("status"), Some(&json!(201)));
+
+        let decoded: PageDocument = serde_json::from_value(value).unwrap();
+        assert_eq!(decoded, page);
+    }
+
+    #[test]
+    fn rendered_page_round_trips_with_asset_graph() {
+        let rendered = RenderedPage {
+            status: StatusCode::OK,
+            html: "<html></html>".to_owned(),
+            assets: AssetGraph {
+                styles: vec![AssetReference {
+                    id: "theme".to_owned(),
+                    href: "/assets/theme.css".to_owned(),
+                }],
+                scripts: vec![AssetReference {
+                    id: "legacy".to_owned(),
+                    href: "/assets/legacy.js".to_owned(),
+                }],
+                modules: vec![AssetReference {
+                    id: "runtime".to_owned(),
+                    href: "/assets/runtime.js".to_owned(),
+                }],
+                inline_data: vec![InlineDataAsset {
+                    id: "bootstrap".to_owned(),
+                    value: json!({ "locale": "zh-CN" }),
+                }],
+                island_boot: vec![IslandBootSpec {
+                    island_id: "editor".to_owned(),
+                    module: "/assets/runtime.js".to_owned(),
+                    props: json!({ "entryId": "post-1" }),
+                }],
+            },
+        };
+
+        let encoded = serde_json::to_string(&rendered).unwrap();
+        let decoded: RenderedPage = serde_json::from_str(&encoded).unwrap();
+
+        assert_eq!(decoded, rendered);
+    }
 }
