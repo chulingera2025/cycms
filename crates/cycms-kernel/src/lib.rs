@@ -24,7 +24,9 @@ use cycms_migrate::MigrationEngine;
 use cycms_observability::{AuditLogger, init_tracing, request_span_middleware};
 use cycms_permission::PermissionEngine;
 use cycms_plugin_api::{PluginContext, ServiceRegistry};
-use cycms_plugin_manager::{PluginManager, PluginManagerConfig, PluginRuntime};
+use cycms_plugin_manager::{
+    HostRegistry, PluginManager, PluginManagerConfig, PluginRuntime, compile_extensions,
+};
 use cycms_plugin_native::NativePluginRuntime;
 use cycms_plugin_wasm::WasmPluginRuntime;
 use cycms_publish::PublishManager;
@@ -56,6 +58,7 @@ pub struct AppContext {
     pub publish_manager: Arc<PublishManager>,
     pub media_manager: Arc<MediaManager>,
     pub plugin_manager: Arc<PluginManager>,
+    pub host_registry: Arc<HostRegistry>,
     pub native_runtime: Arc<NativePluginRuntime>,
     pub wasm_runtime: Arc<WasmPluginRuntime>,
 }
@@ -173,6 +176,7 @@ impl Kernel {
             })?;
         let plugins_root =
             resolve_plugins_root(self.config_path.as_deref(), &self.config.plugins.directory);
+        let host_registry = Arc::new(HostRegistry::new(compile_extensions(&plugins_root)?));
         let native_runtime = Arc::new(NativePluginRuntime::new());
         let native_as_trait: Arc<dyn PluginRuntime> =
             Arc::clone(&native_runtime) as Arc<dyn PluginRuntime>;
@@ -212,6 +216,7 @@ impl Kernel {
             publish_manager,
             media_manager,
             plugin_manager,
+            host_registry,
             native_runtime,
             wasm_runtime,
         })
@@ -242,8 +247,11 @@ impl Kernel {
 
         // 前端 SPA：构建产物目录（apps/web/dist）
         let web_dist = resolve_web_dist_dir(self.config_path.as_deref());
-        let public_fallback_service =
-            build_public_fallback_service(ctx.config.host_rendering.public_pages_mode, web_dist);
+        let public_fallback_service = build_public_fallback_service(
+            ctx.config.host_rendering.public_pages_mode,
+            Arc::clone(&ctx.host_registry),
+            web_dist,
+        );
 
         let app = api_router
             .nest_service("/uploads", uploads_service)
@@ -557,13 +565,17 @@ fn resolve_web_dist_dir(config_path: Option<&Path>) -> PathBuf {
     base.join("apps/web/dist")
 }
 
-fn build_public_fallback_service(mode: PublicPagesMode, web_dist: PathBuf) -> Router {
+fn build_public_fallback_service(
+    mode: PublicPagesMode,
+    host_registry: Arc<HostRegistry>,
+    web_dist: PathBuf,
+) -> Router {
     Router::new()
         .fallback(public_fallback_handler)
         .with_state(PublicFallbackState {
             mode,
             web_dist,
-            lifecycle_engine: DefaultRequestLifecycleEngine,
+            lifecycle_engine: DefaultRequestLifecycleEngine::new(host_registry),
         })
 }
 
@@ -691,6 +703,7 @@ fn is_loopback_host(host: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::sync::Arc;
 
     use axum::body::{self, Body};
     use axum::extract::Request;
@@ -698,6 +711,8 @@ mod tests {
     use cycms_config::PublicPagesMode;
     use cycms_config::{AppConfig, JWT_SECRET_PLACEHOLDER};
     use cycms_core::Error;
+    use cycms_host_types::CompiledExtensionRegistry;
+    use cycms_plugin_manager::HostRegistry;
     use tempfile::tempdir;
     use tower::ServiceExt;
 
@@ -708,6 +723,10 @@ mod tests {
         config.server.host = host.to_owned();
         config.auth.jwt_secret = secret.to_owned();
         config
+    }
+
+    fn empty_host_registry() -> Arc<HostRegistry> {
+        Arc::new(HostRegistry::new(CompiledExtensionRegistry::default()))
     }
 
     #[test]
@@ -752,15 +771,19 @@ mod tests {
         let temp = tempdir().unwrap();
         fs::write(temp.path().join("index.html"), "<html>compat</html>").unwrap();
 
-        let response = build_public_fallback_service(PublicPagesMode::Compat, temp.path().into())
-            .oneshot(
-                Request::builder()
-                    .uri("/posts/hello-world")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = build_public_fallback_service(
+            PublicPagesMode::Compat,
+            empty_host_registry(),
+            temp.path().into(),
+        )
+        .oneshot(
+            Request::builder()
+                .uri("/posts/hello-world")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
         let body = body::to_bytes(response.into_body(), usize::MAX)
@@ -774,16 +797,19 @@ mod tests {
         let temp = tempdir().unwrap();
         fs::write(temp.path().join("index.html"), "<html>host-first</html>").unwrap();
 
-        let response =
-            build_public_fallback_service(PublicPagesMode::HostFirst, temp.path().into())
-                .oneshot(
-                    Request::builder()
-                        .uri("/posts/hello-world")
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-                .await
-                .unwrap();
+        let response = build_public_fallback_service(
+            PublicPagesMode::HostFirst,
+            empty_host_registry(),
+            temp.path().into(),
+        )
+        .oneshot(
+            Request::builder()
+                .uri("/posts/hello-world")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
@@ -801,15 +827,19 @@ mod tests {
         let temp = tempdir().unwrap();
         fs::write(temp.path().join("index.html"), "<html>host-only</html>").unwrap();
 
-        let response = build_public_fallback_service(PublicPagesMode::HostOnly, temp.path().into())
-            .oneshot(
-                Request::builder()
-                    .uri("/posts/hello-world")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = build_public_fallback_service(
+            PublicPagesMode::HostOnly,
+            empty_host_registry(),
+            temp.path().into(),
+        )
+        .oneshot(
+            Request::builder()
+                .uri("/posts/hello-world")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         assert_eq!(

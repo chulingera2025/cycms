@@ -27,6 +27,7 @@ cycms-plugin-api = { workspace = true }
 cycms-plugin-manager = { workspace = true }
 cycms-plugin-native = { workspace = true }
 cycms-plugin-wasm = { workspace = true }
+cycms-render = { workspace = true }
 semver = "1"
 tokio = { workspace = true }
 axum = { workspace = true }
