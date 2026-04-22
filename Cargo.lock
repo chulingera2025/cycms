@@ -826,6 +826,7 @@ dependencies = [
  "cycms-plugin-manager",
  "cycms-plugin-wasm",
  "rand 0.8.6",
+ "serde_json",
  "sqlx",
  "tempfile",
  "tokio",
@@ -920,6 +921,13 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "cycms-host-types"
+version = "0.1.1"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -1096,6 +1104,7 @@ dependencies = [
  "cycms-core",
  "cycms-db",
  "cycms-events",
+ "cycms-host-types",
  "cycms-media",
  "cycms-migrate",
  "cycms-permission",

@@ -93,6 +93,49 @@ cycms = ">=0.1.0"
     plugin_dir
 }
 
+fn write_host_plugin(root: &Path, name: &str) -> PathBuf {
+    let plugin_dir = root.join(name);
+    fs::create_dir_all(&plugin_dir).unwrap();
+    fs::write(
+        plugin_dir.join("plugin.toml"),
+        format!(
+            r#"[plugin]
+name = "{name}"
+version = "0.1.0"
+kind = "native"
+entry = "{name}.so"
+
+[compatibility]
+cycms = ">=0.1.0"
+
+[host]
+
+[[host.assets]]
+id = "{name}-admin"
+styles = ["admin/{name}.css"]
+
+[[host.public_pages]]
+id = "{name}-home"
+path = "/{name}"
+handler = "{name}::public::home"
+asset_bundle_ids = ["{name}-admin"]
+
+[[host.admin_pages]]
+id = "{name}-admin-page"
+path = "/admin/{name}"
+title = "{name}"
+handler = "{name}::admin::screen"
+asset_bundle_ids = ["{name}-admin"]
+"#
+        ),
+    )
+    .unwrap();
+    fs::create_dir_all(plugin_dir.join("admin")).unwrap();
+    fs::write(plugin_dir.join("admin").join(format!("{name}.css")), ".plugin{}\n").unwrap();
+    fs::write(plugin_dir.join(format!("{name}.so")), []).unwrap();
+    plugin_dir
+}
+
 fn free_port() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -166,6 +209,34 @@ async fn plugin_new_command_generates_valid_native_plugin_scaffold() {
     let lib_rs = fs::read_to_string(plugin_root.join("src/lib.rs")).unwrap();
     assert!(lib_rs.contains("cycms_plugin_api::export_plugin!"));
     assert!(plugin_root.join("migrations/postgres").is_dir());
+}
+
+#[tokio::test]
+async fn plugin_compile_command_emits_compiled_registry_artifact() {
+    let temp = tempdir().unwrap();
+    let config_path = write_config(temp.path(), None);
+    let plugins_root = temp.path().join("plugins-runtime");
+    write_host_plugin(&plugins_root, "blog");
+    let output_path = temp.path().join("artifacts/compiled-registry.json");
+
+    run(Cli::parse_from([
+        "cycms",
+        "plugin",
+        "compile",
+        "--config",
+        config_path.to_str().unwrap(),
+        "--output",
+        output_path.to_str().unwrap(),
+    ]))
+    .await
+    .unwrap();
+
+    let payload = fs::read_to_string(&output_path).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&payload).unwrap();
+    assert_eq!(json["schemaVersion"], 1);
+    assert_eq!(json["plugins"].as_array().unwrap().len(), 1);
+    assert_eq!(json["publicPages"][0]["path"], "/blog");
+    assert_eq!(json["adminPages"][0]["path"], "/admin/blog");
 }
 
 #[tokio::test]

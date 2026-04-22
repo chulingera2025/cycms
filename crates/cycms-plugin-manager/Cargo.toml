@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 cycms-core = { workspace = true }
+cycms-host-types = { workspace = true }
 cycms-db = { workspace = true }
 cycms-events = { workspace = true }
 cycms-migrate = { workspace = true }

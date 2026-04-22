@@ -68,6 +68,7 @@ pub struct PluginArgs {
 #[derive(Debug, Subcommand)]
 pub enum PluginCommand {
     New(PluginNewArgs),
+    Compile(PluginCompileArgs),
     Install(PluginInstallArgs),
     List(PluginListArgs),
     Enable(PluginEnableArgs),
@@ -85,6 +86,14 @@ pub struct PluginInstallArgs {
     #[arg(long, default_value = "cycms.toml")]
     pub config: PathBuf,
     pub path: PathBuf,
+}
+
+#[derive(Debug, Args)]
+pub struct PluginCompileArgs {
+    #[arg(long, default_value = "cycms.toml")]
+    pub config: PathBuf,
+    #[arg(long)]
+    pub output: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]

@@ -2,22 +2,23 @@ use std::fs;
 use std::path::Path;
 
 use cycms_core::{Error, Result};
-use cycms_plugin_manager::discover_plugin_dir;
+use cycms_plugin_manager::{compile_extensions, discover_plugin_dir};
 
 use crate::cli::{
-    PluginArgs, PluginCommand, PluginDisableArgs, PluginEnableArgs, PluginInstallArgs,
-    PluginListArgs, PluginNewArgs, PluginRemoveArgs,
+    PluginArgs, PluginCommand, PluginCompileArgs, PluginDisableArgs, PluginEnableArgs,
+    PluginInstallArgs, PluginListArgs, PluginNewArgs, PluginRemoveArgs,
 };
 use crate::commands::new::write_native_plugin_scaffold;
 use crate::support::{
     bootstrap_app, canonicalized_eq, copy_dir_recursive, create_dir_all, load_config,
-    resolve_plugins_root,
+    resolve_plugins_root, write_text_file,
 };
 use crate::templates::DependencyStyle;
 
 pub(crate) async fn run(args: &PluginArgs) -> Result<()> {
     match &args.command {
         PluginCommand::New(new_args) => run_new(new_args),
+        PluginCommand::Compile(compile_args) => run_compile(compile_args),
         PluginCommand::Install(install_args) => run_install(install_args).await,
         PluginCommand::List(list_args) => run_list(list_args).await,
         PluginCommand::Enable(enable_args) => run_enable(enable_args).await,
@@ -30,6 +31,34 @@ fn run_new(args: &PluginNewArgs) -> Result<()> {
     let plugin_name = file_name(&args.name, "plugin")?;
     write_native_plugin_scaffold(&args.name, &plugin_name, &DependencyStyle::Direct)?;
     println!("Created plugin scaffold at {}", args.name.display());
+    Ok(())
+}
+
+fn run_compile(args: &PluginCompileArgs) -> Result<()> {
+    let config = load_config(&args.config)?;
+    let plugins_root = resolve_plugins_root(&args.config, &config.plugins.directory);
+    let registry = compile_extensions(&plugins_root)?;
+    let payload = serde_json::to_string_pretty(&registry).map_err(|source| Error::Internal {
+        message: format!("serialize compiled plugin registry: {source}"),
+        source: None,
+    })?;
+
+    if let Some(output) = &args.output {
+        if let Some(parent) = output.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            create_dir_all(parent)?;
+        }
+        write_text_file(output, &payload)?;
+        println!(
+            "Compiled plugin registry written to {} ({} plugins)",
+            output.display(),
+            registry.plugins.len()
+        );
+    } else {
+        println!("{payload}");
+    }
+
     Ok(())
 }
 

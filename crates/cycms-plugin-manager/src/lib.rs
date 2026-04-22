@@ -10,8 +10,10 @@
 
 mod discovery;
 mod error;
+mod compiler;
 mod frontend_manifest;
 mod frontend_snapshot;
+mod host_registry;
 mod manifest;
 mod model;
 mod repository;
@@ -21,6 +23,7 @@ mod service;
 
 pub use discovery::{DiscoveredPlugin, discover_plugin_dir, scan_plugins_dir};
 pub use error::PluginManagerError;
+pub use compiler::compile_extensions;
 pub use frontend_manifest::{
     ADMIN_SHELL_SDK_VERSION, AdminFrontendManifest, ContributionMatchSpec, CustomPageContribution,
     FieldRendererContribution, FrontendAsset, MenuContribution, RouteContribution,
@@ -36,9 +39,11 @@ pub use frontend_snapshot::{
     insert_frontend_runtime_state, plugin_admin_full_path, resolve_plugin_asset,
     validate_cross_plugin_conflicts,
 };
+pub use host_registry::{HostRegistry, RegistryLookup};
 pub use manifest::{
-    CompatibilitySpec, DependencySpec, FrontendSpec, PermissionEntry, PermissionsSpec, PluginKind,
-    PluginManifest, PluginMeta,
+    AdminPageSpec, AssetBundleSpec, CompatibilityBridgeSpec, CompatibilitySpec,
+    DependencySpec, EditorSpec, FrontendSpec, HookSpec, HostManifestSpec, ParserSpec,
+    PermissionEntry, PermissionsSpec, PluginKind, PluginManifest, PluginMeta, PublicPageSpec,
 };
 pub use model::{NewPluginRow, PluginRecord, PluginStatus};
 pub use repository::PluginRepository;
