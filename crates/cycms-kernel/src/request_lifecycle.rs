@@ -1,15 +1,15 @@
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use axum::extract::Request;
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use cycms_host_types::{
-    AssetGraph, AssetReference, CompiledExtensionRegistry, HeadNode, HostRequestTarget, HtmlNode,
-    PageDocument, PageNode, PublicPageRegistration, TextNode,
+    HeadNode, HostRequestTarget, HtmlNode, PageDocument, PageNode, PublicPageRegistration, TextNode,
 };
 use cycms_plugin_manager::{HostRegistry, RegistryLookup};
-use cycms_render::{DefaultHtmlRenderer, HtmlRenderer};
+use cycms_render::{
+    AssetGraphBuilder, DefaultAssetGraphBuilder, DefaultHtmlRenderer, HtmlRenderer,
+};
 use tracing::error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,16 +87,13 @@ impl DefaultRequestLifecycleEngine {
         let response = decision
             .primary
             .as_ref()
-            .map(|page| render_owned_public_page(page, self.registry.compiled()));
+            .map(|page| render_owned_public_page(page, self.registry.as_ref()));
 
         PublicLifecycleOutcome { response, trace }
     }
 }
 
-fn render_owned_public_page(
-    page: &PublicPageRegistration,
-    compiled: &CompiledExtensionRegistry,
-) -> Response {
+fn render_owned_public_page(page: &PublicPageRegistration, registry: &HostRegistry) -> Response {
     let title = page.title.clone().unwrap_or_else(|| page.path.clone());
     let document = PageDocument {
         route_id: format!("public:{}", page.path),
@@ -126,7 +123,18 @@ fn render_owned_public_page(
         islands: Vec::new(),
         cache_tags: vec![format!("plugin:{}", page.source.plugin_name)],
     };
-    let assets = build_public_asset_graph(compiled, page);
+    let assets = match DefaultAssetGraphBuilder.build_public_page(page, registry) {
+        Ok(assets) => assets,
+        Err(source) => {
+            error!(path = %page.path, handler = %page.handler, error = %source, "failed to build asset graph for host-owned public page");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                "Internal server error",
+            )
+                .into_response();
+        }
+    };
 
     match DefaultHtmlRenderer.render(&document, &assets) {
         Ok(rendered) => (
@@ -145,54 +153,6 @@ fn render_owned_public_page(
                 .into_response()
         }
     }
-}
-
-fn build_public_asset_graph(
-    compiled: &CompiledExtensionRegistry,
-    page: &PublicPageRegistration,
-) -> AssetGraph {
-    let bundle_ids = page
-        .asset_bundle_ids
-        .iter()
-        .cloned()
-        .collect::<BTreeSet<_>>();
-
-    AssetGraph {
-        styles: collect_asset_refs(compiled, &bundle_ids, "style", |bundle| &bundle.styles),
-        scripts: collect_asset_refs(compiled, &bundle_ids, "script", |bundle| &bundle.scripts),
-        modules: collect_asset_refs(compiled, &bundle_ids, "module", |bundle| &bundle.modules),
-        ..AssetGraph::default()
-    }
-}
-
-fn collect_asset_refs<F>(
-    compiled: &CompiledExtensionRegistry,
-    bundle_ids: &BTreeSet<String>,
-    kind: &str,
-    select: F,
-) -> Vec<AssetReference>
-where
-    F: Fn(&cycms_host_types::AssetBundleRegistration) -> &[String],
-{
-    let mut refs = Vec::new();
-    let mut seen_hrefs = BTreeSet::new();
-
-    for bundle in compiled
-        .assets
-        .iter()
-        .filter(|bundle| bundle_ids.contains(&bundle.id))
-    {
-        for (index, href) in select(bundle).iter().enumerate() {
-            if seen_hrefs.insert(href.clone()) {
-                refs.push(AssetReference {
-                    id: format!("{}:{kind}:{index}", bundle.id),
-                    href: href.clone(),
-                });
-            }
-        }
-    }
-
-    refs
 }
 
 #[cfg(test)]

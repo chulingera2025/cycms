@@ -1,8 +1,10 @@
+mod assets;
 mod content_ir;
 mod html_renderer;
 mod page_ir;
 mod parsers;
 
+pub use assets::{AssetGraphBuilder, DefaultAssetGraphBuilder};
 pub use content_ir::{ContentInput, ContentParser, ParseContext};
 pub use html_renderer::{DefaultHtmlRenderer, HtmlRenderer};
 pub use page_ir::{DefaultPageBuilder, PageBuildContext, PageBuildInput, PageBuilder};

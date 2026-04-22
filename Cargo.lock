@@ -981,6 +981,7 @@ dependencies = [
  "cycms-core",
  "cycms-db",
  "cycms-events",
+ "cycms-host-types",
  "cycms-media",
  "cycms-migrate",
  "cycms-observability",
@@ -991,6 +992,7 @@ dependencies = [
  "cycms-plugin-native",
  "cycms-plugin-wasm",
  "cycms-publish",
+ "cycms-render",
  "cycms-revision",
  "cycms-settings",
  "semver",
@@ -1256,6 +1258,7 @@ dependencies = [
  "ammonia",
  "cycms-core",
  "cycms-host-types",
+ "cycms-plugin-manager",
  "http",
  "serde_json",
 ]

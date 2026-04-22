@@ -9,6 +9,7 @@ license.workspace = true
 ammonia = "4"
 cycms-core = { workspace = true }
 cycms-host-types = { workspace = true }
+cycms-plugin-manager = { workspace = true }
 http = { workspace = true }
 serde_json = { workspace = true }
 
