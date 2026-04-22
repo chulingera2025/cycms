@@ -7,11 +7,27 @@ import '@fontsource/fira-sans/700.css';
 import '@fontsource/fira-code/400.css';
 import '@fontsource/fira-code/500.css';
 import '@/lib/i18n';
-import App from './App';
+import { bootstrapHostIslands, hasHostIslandBoot } from '@/features/islands/runtime';
 import './index.css';
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+const rootElement = document.getElementById('root');
+
+async function start() {
+  if (rootElement) {
+    const { default: App } = await import('./App');
+    createRoot(rootElement).render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    return;
+  }
+
+  if (hasHostIslandBoot(document)) {
+    await bootstrapHostIslands(document);
+  }
+}
+
+void start().catch((error) => {
+  console.error('failed to start web runtime', error);
+});

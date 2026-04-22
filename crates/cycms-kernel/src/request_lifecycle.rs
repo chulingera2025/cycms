@@ -5,8 +5,8 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use cycms_admin_shell::{AdminShellRenderer, DefaultAdminShellRenderer};
 use cycms_host_types::{
-    AdminPageRegistration, HeadNode, HostRequestTarget, HtmlNode, PageDocument, PageNode,
-    PublicPageRegistration, TextNode,
+    AdminPageRegistration, AssetGraph, AssetReference, HeadNode, HostRequestTarget, HtmlNode,
+    PageDocument, PageNode, PublicPageRegistration, TextNode,
 };
 use cycms_plugin_manager::{HostRegistry, RegistryLookup};
 use cycms_render::{
@@ -80,12 +80,27 @@ pub struct AdminLifecycleOutcome {
 #[derive(Debug, Clone)]
 pub struct DefaultRequestLifecycleEngine {
     registry: Arc<HostRegistry>,
+    host_island_runtime_module: Option<String>,
 }
 
 impl DefaultRequestLifecycleEngine {
     #[must_use]
     pub fn new(registry: Arc<HostRegistry>) -> Self {
-        Self { registry }
+        Self {
+            registry,
+            host_island_runtime_module: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_host_island_runtime_module(
+        registry: Arc<HostRegistry>,
+        host_island_runtime_module: Option<String>,
+    ) -> Self {
+        Self {
+            registry,
+            host_island_runtime_module,
+        }
     }
 
     #[must_use]
@@ -111,13 +126,22 @@ impl DefaultRequestLifecycleEngine {
         let response = decision
             .primary
             .as_ref()
-            .map(|page| render_owned_admin_page(page, self.registry.as_ref()));
+            .map(|page| {
+                render_owned_admin_page(
+                    page,
+                    self.registry.as_ref(),
+                    self.host_island_runtime_module.as_deref(),
+                )
+            });
 
         AdminLifecycleOutcome { response, trace }
     }
 }
 
-fn render_owned_public_page(page: &PublicPageRegistration, registry: &HostRegistry) -> Response {
+fn render_owned_public_page(
+    page: &PublicPageRegistration,
+    registry: &HostRegistry,
+) -> Response {
     let title = page.title.clone().unwrap_or_else(|| page.path.clone());
     let document = PageDocument {
         route_id: format!("public:{}", page.path),
@@ -163,13 +187,17 @@ fn render_owned_public_page(page: &PublicPageRegistration, registry: &HostRegist
     render_owned_document(&document, &assets, &page.path, &page.handler, "public")
 }
 
-fn render_owned_admin_page(page: &AdminPageRegistration, registry: &HostRegistry) -> Response {
+fn render_owned_admin_page(
+    page: &AdminPageRegistration,
+    registry: &HostRegistry,
+    host_island_runtime_module: Option<&str>,
+) -> Response {
     let shell = DefaultAdminShellRenderer.render_page(page, registry);
     let document = shell.page;
     let assets = match DefaultAssetGraphBuilder.build_admin_page(&document, page, registry) {
         Ok(mut assets) => {
             assets.inline_data.extend(shell.preload);
-            assets
+            inject_host_island_runtime_module(assets, &document, host_island_runtime_module)
         }
         Err(source) => {
             error!(path = %page.path, handler = %page.handler, error = %source, "failed to build asset graph for host-owned admin page");
@@ -183,6 +211,31 @@ fn render_owned_admin_page(page: &AdminPageRegistration, registry: &HostRegistry
     };
 
     render_owned_document(&document, &assets, &page.path, &page.handler, "admin")
+}
+
+fn inject_host_island_runtime_module(
+    mut assets: AssetGraph,
+    document: &PageDocument,
+    host_island_runtime_module: Option<&str>,
+) -> AssetGraph {
+    let Some(host_island_runtime_module) = host_island_runtime_module else {
+        return assets;
+    };
+
+    if document.islands.is_empty()
+        || assets
+            .modules
+            .iter()
+            .any(|asset| asset.href == host_island_runtime_module)
+    {
+        return assets;
+    }
+
+    assets.modules.push(AssetReference {
+        id: "cycms:host-island-runtime".to_owned(),
+        href: host_island_runtime_module.to_owned(),
+    });
+    assets
 }
 
 fn render_owned_document(
@@ -396,6 +449,29 @@ mod tests {
         assert!(html.contains("/plugins/blog/admin/main.css"));
         assert!(html.contains("/plugins/blog/admin/main.js"));
         assert!(html.contains("data-island-boot=\"admin-screen:blog-dashboard\""));
+    }
+
+    #[tokio::test]
+    async fn owned_admin_page_injects_host_island_runtime_module() {
+        let request = Request::builder()
+            .uri("/admin/x/blog/dashboard")
+            .body(Body::empty())
+            .unwrap();
+
+        let outcome = DefaultRequestLifecycleEngine::with_host_island_runtime_module(
+            admin_page_registry(AdminPageMode::Compatibility),
+            Some("/assets/index-runtime.js".to_owned()),
+        )
+        .execute_admin_request(&request);
+
+        let response = outcome.response.expect("owned admin page should render");
+        let body = body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let html = std::str::from_utf8(&body).unwrap();
+
+        assert!(html.contains("src=\"/assets/index-runtime.js\""));
+        assert!(html.contains("data-module=\"/plugins/blog/admin/main.js\""));
     }
 
     #[tokio::test]

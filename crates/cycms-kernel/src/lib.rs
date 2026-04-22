@@ -578,12 +578,16 @@ fn build_public_fallback_service(
     host_registry: Arc<HostRegistry>,
     web_dist: PathBuf,
 ) -> Router {
+    let host_island_runtime_module = resolve_host_island_runtime_module(&web_dist);
     Router::new()
         .fallback(public_fallback_handler)
         .with_state(PublicFallbackState {
             mode,
             web_dist,
-            lifecycle_engine: DefaultRequestLifecycleEngine::new(host_registry),
+            lifecycle_engine: DefaultRequestLifecycleEngine::with_host_island_runtime_module(
+                host_registry,
+                host_island_runtime_module,
+            ),
         })
 }
 
@@ -592,14 +596,33 @@ fn build_admin_fallback_router(
     host_registry: Arc<HostRegistry>,
     web_dist: PathBuf,
 ) -> Router {
+    let host_island_runtime_module = resolve_host_island_runtime_module(&web_dist);
     Router::new()
         .route("/admin", any(admin_fallback_handler))
         .route("/admin/{*path}", any(admin_fallback_handler))
         .with_state(AdminFallbackState {
             mode,
             web_dist,
-            lifecycle_engine: DefaultRequestLifecycleEngine::new(host_registry),
+            lifecycle_engine: DefaultRequestLifecycleEngine::with_host_island_runtime_module(
+                host_registry,
+                host_island_runtime_module,
+            ),
         })
+}
+
+fn resolve_host_island_runtime_module(web_dist: &Path) -> Option<String> {
+    let index_html = std::fs::read_to_string(web_dist.join("index.html")).ok()?;
+    extract_first_module_script_src(&index_html)
+}
+
+fn extract_first_module_script_src(index_html: &str) -> Option<String> {
+    index_html
+        .split("<script")
+        .skip(1)
+        .find(|segment| segment.contains("type=\"module\"") && segment.contains("src=\""))
+        .and_then(|segment| segment.split("src=\"").nth(1))
+        .and_then(|segment| segment.split('"').next())
+        .map(str::to_owned)
 }
 
 #[derive(Clone)]
@@ -1012,7 +1035,7 @@ mod tests {
         let temp = tempdir().unwrap();
         fs::write(
             temp.path().join("index.html"),
-            "<html>admin-host-first</html>",
+            "<html><head><script type=\"module\" src=\"/assets/index-runtime.js\"></script></head><body>admin-host-first</body></html>",
         )
         .unwrap();
 
@@ -1046,6 +1069,7 @@ mod tests {
         assert!(html.contains("Blog Dashboard | Admin"));
         assert!(html.contains("/plugins/blog/admin/main.css"));
         assert!(html.contains("/plugins/blog/admin/main.js"));
+        assert!(html.contains("/assets/index-runtime.js"));
         assert!(html.contains("data-island-boot=\"admin-screen:blog-dashboard\""));
     }
 

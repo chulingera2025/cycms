@@ -4,7 +4,7 @@ use cycms_host_types::{
     AdminPageMode, AdminPageRegistration, HeadNode, HtmlNode, InlineDataAsset, IslandMount,
     PageDocument, PageNode, TextNode,
 };
-use cycms_plugin_manager::HostRegistry;
+use cycms_plugin_manager::{ADMIN_SHELL_SDK_VERSION, HostRegistry};
 use http::StatusCode;
 use serde_json::json;
 
@@ -120,6 +120,7 @@ impl AdminShellRenderer for DefaultAdminShellRenderer {
                     "path": page.path,
                     "mode": shell_mode,
                     "plugin": page.source.plugin_name,
+                    "sdkVersion": ADMIN_SHELL_SDK_VERSION,
                     "breadcrumbs": breadcrumbs
                         .iter()
                         .map(|crumb| json!({
@@ -370,6 +371,7 @@ mod tests {
 
         assert_eq!(output.preload[0].id, "admin-preload:blog-dashboard");
         assert_eq!(output.preload[0].value["mode"], "compatibility");
+        assert_eq!(output.preload[0].value["sdkVersion"], "1.0.0");
         assert_eq!(
             output.preload[0].value["breadcrumbs"][0]["href"],
             "/admin/x/blog/dashboard"
