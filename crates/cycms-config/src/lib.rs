@@ -35,6 +35,42 @@ pub struct AppConfig {
     pub plugins: PluginsConfig,
     /// admin extension 模块宿主的安全与遥测配置。
     pub admin_extensions: AdminExtensionsConfig,
+    /// 宿主渲染迁移开关与兼容模式。
+    pub host_rendering: HostRenderingConfig,
+}
+
+/// 宿主渲染迁移开关配置。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct HostRenderingConfig {
+    /// 公开页面拥有权模式。
+    pub public_pages_mode: PublicPagesMode,
+    /// 后台壳拥有权模式。
+    pub admin_shell_mode: AdminShellMode,
+    /// 是否保留 legacy plugin 兼容桥。
+    pub legacy_plugin_compat: bool,
+    /// 是否要求启动前已有编译后的 registry。
+    pub compiled_registry_required: bool,
+}
+
+/// 公开页面的宿主拥有权模式。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum PublicPagesMode {
+    Compat,
+    #[default]
+    HostFirst,
+    HostOnly,
+}
+
+/// 后台壳的宿主拥有权模式。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum AdminShellMode {
+    #[default]
+    Compat,
+    HostFirst,
+    HostOnly,
 }
 
 /// HTTP 服务端口、限流与 CORS 相关配置。
@@ -345,6 +381,17 @@ impl Default for AdminExtensionsConfig {
     }
 }
 
+impl Default for HostRenderingConfig {
+    fn default() -> Self {
+        Self {
+            public_pages_mode: PublicPagesMode::HostFirst,
+            admin_shell_mode: AdminShellMode::Compat,
+            legacy_plugin_compat: true,
+            compiled_registry_required: false,
+        }
+    }
+}
+
 impl AppConfig {
     /// 从 cycms.toml 和环境变量加载配置。
     ///
@@ -532,8 +579,8 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
 
     use super::{
-        AdminExtensionsConfig, AppConfig, DEFAULT_CONFIG_FILE, DatabaseDriver, DeleteMode, Error,
-        LogFormat,
+        AdminExtensionsConfig, AdminShellMode, AppConfig, DEFAULT_CONFIG_FILE, DatabaseDriver,
+        DeleteMode, Error, HostRenderingConfig, LogFormat, PublicPagesMode,
         apply_env_overrides_from_iter,
     };
 
@@ -603,6 +650,7 @@ wasm_enabled = false
         assert!(!config.observability.audit_enabled);
         assert!(!config.plugins.wasm_enabled);
         assert_eq!(config.admin_extensions, AdminExtensionsConfig::default());
+        assert_eq!(config.host_rendering, HostRenderingConfig::default());
     }
 
     #[test]
@@ -648,10 +696,7 @@ wasm_enabled = false
                 ("CYCMS__OBSERVABILITY__AUDIT_ENABLED", "false"),
                 ("CYCMS__PLUGINS__WASM_ENABLED", "false"),
                 ("CYCMS__ADMIN_EXTENSIONS__CSP_REPORT_ONLY", "false"),
-                (
-                    "CYCMS__ADMIN_EXTENSIONS__RECENT_EVENT_CAPACITY",
-                    "64",
-                ),
+                ("CYCMS__ADMIN_EXTENSIONS__RECENT_EVENT_CAPACITY", "64"),
             ],
         )
         .unwrap();
@@ -672,11 +717,57 @@ wasm_enabled = false
     }
 
     #[test]
+    fn env_overrides_host_rendering_modes_and_flags() {
+        let mut config = AppConfig::default();
+
+        apply_env_overrides_from_iter(
+            &mut config,
+            [
+                ("CYCMS__HOST_RENDERING__PUBLIC_PAGES_MODE", "host-only"),
+                ("CYCMS__HOST_RENDERING__ADMIN_SHELL_MODE", "host-first"),
+                ("CYCMS__HOST_RENDERING__LEGACY_PLUGIN_COMPAT", "false"),
+                ("CYCMS__HOST_RENDERING__COMPILED_REGISTRY_REQUIRED", "true"),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.host_rendering.public_pages_mode,
+            PublicPagesMode::HostOnly
+        );
+        assert_eq!(
+            config.host_rendering.admin_shell_mode,
+            AdminShellMode::HostFirst
+        );
+        assert!(!config.host_rendering.legacy_plugin_compat);
+        assert!(config.host_rendering.compiled_registry_required);
+    }
+
+    #[test]
+    fn host_rendering_defaults_match_phase_two_cutover() {
+        let config = AppConfig::default();
+
+        assert_eq!(
+            config.host_rendering.public_pages_mode,
+            PublicPagesMode::HostFirst
+        );
+        assert_eq!(
+            config.host_rendering.admin_shell_mode,
+            AdminShellMode::Compat
+        );
+        assert!(config.host_rendering.legacy_plugin_compat);
+        assert!(!config.host_rendering.compiled_registry_required);
+    }
+
+    #[test]
     fn admin_extension_defaults_enable_report_only_csp_and_recent_events() {
         let config = AppConfig::default();
         assert!(config.admin_extensions.csp_enabled);
         assert!(config.admin_extensions.csp_report_only);
-        assert_eq!(config.admin_extensions.csp_report_uri, "/api/v1/admin/extensions/events");
+        assert_eq!(
+            config.admin_extensions.csp_report_uri,
+            "/api/v1/admin/extensions/events"
+        );
         assert_eq!(config.admin_extensions.recent_event_capacity, 200);
     }
 

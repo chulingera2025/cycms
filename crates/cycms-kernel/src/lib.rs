@@ -1,7 +1,10 @@
+mod request_lifecycle;
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use axum::Router;
 use axum::extract::{Request, State};
 use axum::http::{HeaderName, HeaderValue, Method, header};
 use axum::middleware::{self, Next};
@@ -9,6 +12,7 @@ use axum::response::{IntoResponse, Response};
 use cycms_auth::AuthEngine;
 use cycms_config::AppConfig;
 use cycms_config::CorsConfig;
+use cycms_config::PublicPagesMode;
 use cycms_config::{JWT_SECRET_PLACEHOLDER, MIN_JWT_SECRET_BYTES};
 use cycms_content_engine::ContentEngine;
 use cycms_content_model::{ContentModelRegistry, FieldTypeRegistry, seed_default_types};
@@ -29,9 +33,12 @@ use cycms_settings::SettingsManager;
 use semver::Version;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
-use tower::ServiceBuilder;
+use tower::{ServiceBuilder, ServiceExt};
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_http::services::{ServeDir, ServeFile};
 use tracing::{info, warn};
+
+use crate::request_lifecycle::{DefaultRequestLifecycleEngine, LifecyclePhase, LifecycleTrace};
 
 /// 全局应用上下文，Kernel bootstrap 后在所有组件间共享。
 #[non_exhaustive]
@@ -231,17 +238,16 @@ impl Kernel {
 
         // 静态文件：上传目录
         let uploads_dir = PathBuf::from(&ctx.config.media.upload_dir);
-        let uploads_service = tower_http::services::ServeDir::new(&uploads_dir);
+        let uploads_service = ServeDir::new(&uploads_dir);
 
         // 前端 SPA：构建产物目录（apps/web/dist）
         let web_dist = resolve_web_dist_dir(self.config_path.as_deref());
-        let spa_service = tower_http::services::ServeDir::new(&web_dist).fallback(
-            tower_http::services::ServeFile::new(web_dist.join("index.html")),
-        );
+        let public_fallback_service =
+            build_public_fallback_service(ctx.config.host_rendering.public_pages_mode, web_dist);
 
         let app = api_router
             .nest_service("/uploads", uploads_service)
-            .fallback_service(spa_service)
+            .fallback_service(public_fallback_service)
             .layer(
                 ServiceBuilder::new()
                     .layer(middleware::from_fn_with_state(
@@ -551,6 +557,86 @@ fn resolve_web_dist_dir(config_path: Option<&Path>) -> PathBuf {
     base.join("apps/web/dist")
 }
 
+fn build_public_fallback_service(mode: PublicPagesMode, web_dist: PathBuf) -> Router {
+    Router::new()
+        .fallback(public_fallback_handler)
+        .with_state(PublicFallbackState {
+            mode,
+            web_dist,
+            lifecycle_engine: DefaultRequestLifecycleEngine,
+        })
+}
+
+#[derive(Clone)]
+struct PublicFallbackState {
+    mode: PublicPagesMode,
+    web_dist: PathBuf,
+    lifecycle_engine: DefaultRequestLifecycleEngine,
+}
+
+async fn public_fallback_handler(
+    State(state): State<PublicFallbackState>,
+    request: Request,
+) -> Response {
+    match state.mode {
+        PublicPagesMode::Compat => serve_spa_fallback(&state.web_dist, request).await,
+        PublicPagesMode::HostFirst => {
+            let outcome = state.lifecycle_engine.execute_public_request(&request);
+            if let Some(response) = outcome.response {
+                finalize_public_response(response, state.mode, outcome.trace)
+            } else {
+                let mut trace = outcome.trace;
+                trace.push(LifecyclePhase::CompatSpaFallback);
+                let response = serve_spa_fallback(&state.web_dist, request).await;
+                finalize_public_response(response, state.mode, trace)
+            }
+        }
+        PublicPagesMode::HostOnly => {
+            let outcome = state.lifecycle_engine.execute_public_request(&request);
+            if let Some(response) = outcome.response {
+                finalize_public_response(response, state.mode, outcome.trace)
+            } else {
+                finalize_public_response(
+                    axum::http::StatusCode::NOT_FOUND.into_response(),
+                    state.mode,
+                    outcome.trace,
+                )
+            }
+        }
+    }
+}
+
+async fn serve_spa_fallback(web_dist: &Path, request: Request) -> Response {
+    ServeDir::new(web_dist)
+        .fallback(ServeFile::new(web_dist.join("index.html")))
+        .oneshot(request)
+        .await
+        .expect("ServeDir fallback should be infallible")
+        .map(axum::body::Body::new)
+}
+
+fn finalize_public_response(
+    mut response: Response,
+    mode: PublicPagesMode,
+    mut trace: LifecycleTrace,
+) -> Response {
+    trace.push(LifecyclePhase::BeforeSend);
+    response.headers_mut().insert(
+        HeaderName::from_static("x-cycms-public-pages-mode"),
+        HeaderValue::from_static(match mode {
+            PublicPagesMode::Compat => "compat",
+            PublicPagesMode::HostFirst => "host-first",
+            PublicPagesMode::HostOnly => "host-only",
+        }),
+    );
+    if let Ok(value) = HeaderValue::from_str(&trace.header_value()) {
+        response
+            .headers_mut()
+            .insert(HeaderName::from_static("x-cycms-lifecycle-trace"), value);
+    }
+    response
+}
+
 /// 启动前的认证配置安全校验。
 ///
 /// 回环地址视为本机开发，仅警告；其他地址视为可被远端访问，占位符或过短密钥
@@ -604,10 +690,18 @@ fn is_loopback_host(host: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
+    use axum::body::{self, Body};
+    use axum::extract::Request;
+    use axum::http::StatusCode;
+    use cycms_config::PublicPagesMode;
     use cycms_config::{AppConfig, JWT_SECRET_PLACEHOLDER};
     use cycms_core::Error;
+    use tempfile::tempdir;
+    use tower::ServiceExt;
 
-    use super::validate_auth_config;
+    use super::{build_public_fallback_service, validate_auth_config};
 
     fn config_with(host: &str, secret: &str) -> AppConfig {
         let mut config = AppConfig::default();
@@ -651,5 +745,80 @@ mod tests {
             let config = config_with(host, &strong);
             validate_auth_config(&config).expect("强密钥在任何 host 都应通过");
         }
+    }
+
+    #[tokio::test]
+    async fn compat_mode_serves_spa_index_for_unknown_public_path() {
+        let temp = tempdir().unwrap();
+        fs::write(temp.path().join("index.html"), "<html>compat</html>").unwrap();
+
+        let response = build_public_fallback_service(PublicPagesMode::Compat, temp.path().into())
+            .oneshot(
+                Request::builder()
+                    .uri("/posts/hello-world")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(std::str::from_utf8(&body).unwrap(), "<html>compat</html>");
+    }
+
+    #[tokio::test]
+    async fn host_first_mode_falls_back_to_spa_with_lifecycle_headers() {
+        let temp = tempdir().unwrap();
+        fs::write(temp.path().join("index.html"), "<html>host-first</html>").unwrap();
+
+        let response =
+            build_public_fallback_service(PublicPagesMode::HostFirst, temp.path().into())
+                .oneshot(
+                    Request::builder()
+                        .uri("/posts/hello-world")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("x-cycms-public-pages-mode").unwrap(),
+            "host-first"
+        );
+        assert_eq!(
+            response.headers().get("x-cycms-lifecycle-trace").unwrap(),
+            "request_received,route_matched,compat_spa_fallback,before_send"
+        );
+    }
+
+    #[tokio::test]
+    async fn host_only_mode_returns_not_found_without_spa_fallback() {
+        let temp = tempdir().unwrap();
+        fs::write(temp.path().join("index.html"), "<html>host-only</html>").unwrap();
+
+        let response = build_public_fallback_service(PublicPagesMode::HostOnly, temp.path().into())
+            .oneshot(
+                Request::builder()
+                    .uri("/posts/hello-world")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response.headers().get("x-cycms-public-pages-mode").unwrap(),
+            "host-only"
+        );
+        assert_eq!(
+            response.headers().get("x-cycms-lifecycle-trace").unwrap(),
+            "request_received,route_matched,before_send"
+        );
     }
 }

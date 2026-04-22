@@ -89,3 +89,13 @@ csp_report_only = true
 csp_report_uri = "/api/v1/admin/extensions/events"
 # 诊断面板中保留的最近事件数
 recent_event_capacity = 200
+
+[host_rendering]
+# 公开页优先走宿主生命周期；未命中拥有者时再回退兼容 SPA
+public_pages_mode = "host-first"
+# 后台仍保持兼容模式，后续阶段再切到 host-first / host-only
+admin_shell_mode = "compat"
+# 迁移期间继续保留 legacy plugin 兼容桥
+legacy_plugin_compat = true
+# 允许在没有预编译 registry 的情况下启动
+compiled_registry_required = false
