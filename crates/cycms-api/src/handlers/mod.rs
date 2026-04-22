@@ -1,3 +1,4 @@
+pub mod admin_editor_registry;
 pub mod admin_extensions;
 pub mod auth;
 pub mod content;

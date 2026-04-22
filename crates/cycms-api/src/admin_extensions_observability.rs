@@ -147,8 +147,10 @@ impl AdminExtensionEventStore {
 pub fn build_admin_extension_security_state(
     config: &AdminExtensionsConfig,
 ) -> AdminExtensionSecurityState {
-    let report_uri = (!config.csp_report_uri.trim().is_empty()).then(|| config.csp_report_uri.clone());
-    let csp_policy = build_admin_extension_csp_policy(config, report_uri.as_deref()).unwrap_or_default();
+    let report_uri =
+        (!config.csp_report_uri.trim().is_empty()).then(|| config.csp_report_uri.clone());
+    let csp_policy =
+        build_admin_extension_csp_policy(config, report_uri.as_deref()).unwrap_or_default();
     AdminExtensionSecurityState {
         csp_enabled: config.csp_enabled,
         csp_report_only: config.csp_report_only,
@@ -224,9 +226,7 @@ pub fn build_csp_report_event(report: Value) -> AdminExtensionRecordedEvent {
         source: "csp".to_owned(),
         level: "warning".to_owned(),
         event_name: "csp.report".to_owned(),
-        message: format!(
-            "检测到 CSP 违规：directive={violated_directive}, blocked={blocked_uri}"
-        ),
+        message: format!("检测到 CSP 违规：directive={violated_directive}, blocked={blocked_uri}"),
         actor_id: None,
         request_id: None,
         plugin_name: None,
@@ -269,17 +269,19 @@ mod tests {
         let store = AdminExtensionEventStore::new(2);
         for index in 0..3 {
             let _ = store
-                .record(AdminExtensionRecordedEvent::client(AdminExtensionClientEventPayload {
-                    source: "host".to_owned(),
-                    level: "info".to_owned(),
-                    event_name: format!("event-{index}"),
-                    message: format!("message-{index}"),
-                    plugin_name: None,
-                    contribution_id: None,
-                    contribution_kind: None,
-                    full_path: None,
-                    detail: None,
-                }))
+                .record(AdminExtensionRecordedEvent::client(
+                    AdminExtensionClientEventPayload {
+                        source: "host".to_owned(),
+                        level: "info".to_owned(),
+                        event_name: format!("event-{index}"),
+                        message: format!("message-{index}"),
+                        plugin_name: None,
+                        contribution_id: None,
+                        contribution_kind: None,
+                        full_path: None,
+                        detail: None,
+                    },
+                ))
                 .await;
         }
 
@@ -292,8 +294,9 @@ mod tests {
     #[test]
     fn csp_policy_uses_same_origin_defaults() {
         let config = AdminExtensionsConfig::default();
-        let policy = build_admin_extension_csp_policy(&config, Some("/api/v1/admin/extensions/events"))
-            .unwrap();
+        let policy =
+            build_admin_extension_csp_policy(&config, Some("/api/v1/admin/extensions/events"))
+                .unwrap();
         assert!(policy.contains("default-src 'self'"));
         assert!(policy.contains("script-src 'self'"));
         assert!(policy.contains("report-uri /api/v1/admin/extensions/events"));

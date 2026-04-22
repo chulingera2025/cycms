@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use axum::extract::Request;
 use axum::Json;
 use axum::Router;
 use axum::body::Body;
+use axum::extract::Request;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::Response;
@@ -15,12 +15,12 @@ use serde_json::Value;
 use tracing::{info, warn};
 
 use crate::common::require_permission;
+use crate::state::ApiState;
 use crate::{
     AdminExtensionClientEventPayload, AdminExtensionDiagnosticsResponse,
-    build_admin_extension_security_state, build_csp_report_event,
-    normalize_csp_report_payload, with_request_context,
+    build_admin_extension_security_state, build_csp_report_event, normalize_csp_report_payload,
+    with_request_context,
 };
-use crate::state::ApiState;
 
 pub fn protected_routes() -> Router<Arc<ApiState>> {
     Router::new()
@@ -93,10 +93,11 @@ pub async fn post_event(
     if content_type.contains("application/csp-report")
         || content_type.contains("application/reports+json")
     {
-        let payload = serde_json::from_slice::<Value>(&body).map_err(|source| Error::BadRequest {
-            message: format!("invalid csp report payload: {source}"),
-            source: None,
-        })?;
+        let payload =
+            serde_json::from_slice::<Value>(&body).map_err(|source| Error::BadRequest {
+                message: format!("invalid csp report payload: {source}"),
+                source: None,
+            })?;
         for report in normalize_csp_report_payload(payload) {
             let event = with_request_context(
                 build_csp_report_event(report),
@@ -119,12 +120,13 @@ pub async fn post_event(
         return Ok(StatusCode::NO_CONTENT);
     }
 
-    let payload = serde_json::from_slice::<AdminExtensionClientEventPayload>(&body).map_err(
-        |source| Error::BadRequest {
-            message: format!("invalid admin extension telemetry payload: {source}"),
-            source: None,
-        },
-    )?;
+    let payload =
+        serde_json::from_slice::<AdminExtensionClientEventPayload>(&body).map_err(|source| {
+            Error::BadRequest {
+                message: format!("invalid admin extension telemetry payload: {source}"),
+                source: None,
+            }
+        })?;
     let event = with_request_context(
         crate::admin_extensions_observability::AdminExtensionRecordedEvent::client(payload),
         Some(&claims.sub),

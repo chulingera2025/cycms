@@ -82,6 +82,7 @@ wasm_enabled = true
         Arc::new(AdminExtensionEventStore::new(
             ctx.config.admin_extensions.recent_event_capacity,
         )),
+        Arc::clone(&ctx.host_registry),
     ));
 
     build_router(state)
@@ -290,10 +291,12 @@ async fn admin_extension_diagnostics_include_security_state_and_recent_events() 
     );
     assert_eq!(body["security"]["cspEnabled"], json!(true));
     assert_eq!(body["security"]["cspReportOnly"], json!(true));
-    assert!(body["security"]["cspPolicy"]
-        .as_str()
-        .unwrap()
-        .contains("default-src 'self'"));
+    assert!(
+        body["security"]["cspPolicy"]
+            .as_str()
+            .unwrap()
+            .contains("default-src 'self'")
+    );
 
     let response = app
         .clone()

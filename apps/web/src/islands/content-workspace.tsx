@@ -1,5 +1,6 @@
 import './bootstrap';
 import { ContentWorkspace, type ContentWorkspaceProps } from '@/features/content/ContentWorkspace';
+import { EditorRegistryCtx, parseEditorRegistry } from '@/features/content/editorRegistry';
 import type { HostIslandMountContext } from '@/features/islands/runtime';
 import { mountReactIsland, unmountReactIsland } from './react-island';
 
@@ -44,9 +45,14 @@ function contentWorkspacePropsFromContext(
 }
 
 export async function mount(context: HostIslandMountContext) {
-  return mountReactIsland(context, (currentContext) => (
-    <ContentWorkspace {...contentWorkspacePropsFromContext(currentContext)} />
-  ));
+  return mountReactIsland(context, (currentContext) => {
+    const editors = parseEditorRegistry(currentContext.inlineData['editor-registry']);
+    return (
+      <EditorRegistryCtx.Provider value={editors}>
+        <ContentWorkspace {...contentWorkspacePropsFromContext(currentContext)} />
+      </EditorRegistryCtx.Provider>
+    );
+  });
 }
 
 export async function unmount(context: HostIslandMountContext) {

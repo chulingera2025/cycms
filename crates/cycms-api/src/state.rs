@@ -8,6 +8,7 @@ use cycms_events::EventBus;
 use cycms_media::MediaManager;
 use cycms_permission::PermissionEngine;
 use cycms_plugin_api::ServiceRegistry;
+use cycms_plugin_manager::HostRegistry;
 use cycms_plugin_manager::PluginManager;
 use cycms_plugin_native::NativePluginRuntime;
 use cycms_plugin_wasm::WasmPluginRuntime;
@@ -34,6 +35,7 @@ pub struct ApiState {
     pub native_runtime: Arc<NativePluginRuntime>,
     pub wasm_runtime: Arc<WasmPluginRuntime>,
     pub admin_extension_events: SharedAdminExtensionEventStore,
+    pub host_registry: Arc<HostRegistry>,
 }
 
 impl ApiState {
@@ -55,6 +57,7 @@ impl ApiState {
         native_runtime: Arc<NativePluginRuntime>,
         wasm_runtime: Arc<WasmPluginRuntime>,
         admin_extension_events: SharedAdminExtensionEventStore,
+        host_registry: Arc<HostRegistry>,
     ) -> Self {
         Self {
             config,
@@ -72,6 +75,7 @@ impl ApiState {
             native_runtime,
             wasm_runtime,
             admin_extension_events,
+            host_registry,
         }
     }
 }

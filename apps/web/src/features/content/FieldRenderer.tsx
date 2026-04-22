@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Button, DatePicker, Input, InputNumber, Skeleton, Space, Switch } from 'antd';
 import dayjs from 'dayjs';
 import { Image as ImageIcon, Link2, X } from 'lucide-react';
@@ -14,8 +14,8 @@ import { useMedia } from '@/features/media/hooks';
 import { resolveMediaUrl, formatBytes } from '@/utils/format';
 import type { FieldDefinition } from '@/types';
 import { RelationSelect } from './RelationSelect';
-
-const MDEditor = lazy(() => import('@uiw/react-md-editor'));
+import { RichTextEditor } from './RichTextEditor';
+import { useEditorRegistry } from './editorRegistry';
 
 interface Props {
   field: FieldDefinition;
@@ -209,6 +209,7 @@ export function FieldRenderer({
   validate,
 }: Props) {
   const fieldTypeKind = getFieldTypeKind(field.field_type);
+  const editorRegistry = useEditorRegistry();
 
   switch (fieldTypeKind) {
     case 'boolean':
@@ -233,18 +234,32 @@ export function FieldRenderer({
       );
 
     case 'richtext':
-      return (
-        <div data-color-mode="inherit">
-          <Suspense fallback={<Skeleton.Input active block style={{ height: 280 }} />}>
-            <MDEditor
-              value={typeof value === 'string' ? value : ''}
-              onChange={(v) => onChange(v ?? '')}
-              height={280}
-              preview="live"
+      return (() => {
+        const override = editorRegistry.find((e) => e.fieldTypes.includes('richtext'));
+        if (override && override.modules[0]) {
+          return (
+            <PluginFieldRendererHost
+              pluginName={override.editor}
+              contributionId={override.id}
+              sdkVersion="1.0.0"
+              moduleUrl={override.modules[0]}
+              styles={override.styles}
+              field={field}
+              value={value}
+              onChange={onChange}
+              contentTypeApiId={contentTypeApiId}
+              entryId={entryId}
+              mode={mode ?? 'edit'}
+              dirty={dirty ?? false}
+              validationError={validationError ?? null}
+              setValidationError={setValidationError ?? (() => undefined)}
+              validate={validate ?? (() => null)}
+              onFatalError={() => undefined}
             />
-          </Suspense>
-        </div>
-      );
+          );
+        }
+        return <RichTextEditor value={typeof value === 'string' ? value : ''} onChange={onChange} />;
+      })();
 
     case 'datetime':
       return (
