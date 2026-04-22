@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Input, Popconfirm, Select, Space, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { History, Plus } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { EntryEditor } from '@/features/content/EntryEditor';
 import { RevisionDrawer } from '@/features/content/RevisionDrawer';
 import {
@@ -30,7 +31,9 @@ const STATUS_LABEL: Record<ContentStatus, string> = {
 
 export default function ContentPage() {
   const { data: types = [], isLoading: typesLoading } = useContentTypes();
-  const [selectedType, setSelectedType] = useState<string>('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const routeType = searchParams.get('type') ?? '';
+  const [selectedType, setSelectedType] = useState<string>(routeType);
   const [statusFilter, setStatusFilter] = useState<ContentStatus | ''>('');
   const [slugSearch, setSlugSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -41,6 +44,12 @@ export default function ContentPage() {
 
   const [revisionOpen, setRevisionOpen] = useState(false);
   const [revisionEntryId, setRevisionEntryId] = useState<string>('');
+
+  useEffect(() => {
+    if (routeType && routeType !== selectedType) {
+      setSelectedType(routeType);
+    }
+  }, [routeType, selectedType]);
 
   const typeApiId = selectedType || types[0]?.api_id || '';
   const currentType = useMemo(
@@ -215,6 +224,9 @@ export default function ContentPage() {
             loading={typesLoading}
             onChange={(v) => {
               setSelectedType(v);
+              const next = new URLSearchParams(searchParams);
+              next.set('type', v);
+              setSearchParams(next);
               setPage(1);
             }}
             options={types.map((t) => ({ value: t.api_id, label: t.name }))}

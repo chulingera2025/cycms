@@ -85,6 +85,8 @@ export const router = createBrowserRouter([
         element: <Lazy><PublicLayout /></Lazy>,
         children: [
           { path: '/', element: <Lazy><HomePage /></Lazy> },
+          { path: '/blog', element: <Lazy><ContentListPage /></Lazy> },
+          { path: '/blog/:idOrSlug', element: <Lazy><ContentDetailPage /></Lazy> },
           { path: '/content', element: <Lazy><ContentIndexPage /></Lazy> },
           { path: '/content/:typeApiId', element: <Lazy><ContentListPage /></Lazy> },
           { path: '/content/:typeApiId/:idOrSlug', element: <Lazy><ContentDetailPage /></Lazy> },

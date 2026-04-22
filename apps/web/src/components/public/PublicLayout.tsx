@@ -2,18 +2,26 @@ import { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Drawer } from 'antd';
 import { LogIn, Menu as MenuIcon, Search, UserCircle } from 'lucide-react';
+import { useBlogSiteSettings } from '@/features/public/hooks';
+import { useMedia } from '@/features/media/hooks';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/stores/auth';
 import { ThemeSwitcher } from '@/components/shared/ThemeSwitcher';
+import { resolveMediaUrl } from '@/utils/format';
 
 export default function PublicLayout() {
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const { t } = useTranslation(['public', 'common']);
+  const { data: siteSettings } = useBlogSiteSettings();
+  const { data: logo } = useMedia(siteSettings?.logoId);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const siteName = siteSettings?.siteName ?? t('app.name', { ns: 'common' });
+  const footerText = siteSettings?.footerText ?? `${siteName}. All rights reserved.`;
 
   const loginHref = `/login?redirect=${encodeURIComponent(location.pathname + location.search)}`;
 
@@ -35,7 +43,7 @@ export default function PublicLayout() {
         {t('nav.home')}
       </Link>
       <Link
-        to="/content"
+        to="/blog"
         className="text-sm text-text-secondary no-underline transition-colors hover:text-text"
       >
         {t('nav.content')}
@@ -86,11 +94,19 @@ export default function PublicLayout() {
               to="/"
               className="flex items-center gap-2 text-text no-underline hover:text-text"
             >
-              <span className="grid h-7 w-7 place-items-center rounded bg-brand text-sm font-bold text-white">
-                C
-              </span>
+              {logo ? (
+                <img
+                  src={resolveMediaUrl(logo.storage_path)}
+                  alt={siteName}
+                  className="h-7 w-7 rounded object-cover"
+                />
+              ) : (
+                <span className="grid h-7 w-7 place-items-center rounded bg-brand text-sm font-bold text-white">
+                  {siteName.slice(0, 1).toUpperCase()}
+                </span>
+              )}
               <span className="text-base font-semibold tracking-wide">
-                {t('app.name', { ns: 'common' })}
+                {siteName}
               </span>
             </Link>
             <nav className="hidden items-center gap-5 md:flex">{navLinks}</nav>
@@ -137,7 +153,7 @@ export default function PublicLayout() {
         onClose={() => setDrawerOpen(false)}
         placement="right"
         width={260}
-        title={t('app.name', { ns: 'common' })}
+        title={siteName}
       >
         <div className="flex flex-col gap-5">
           <nav className="flex flex-col gap-3">{navLinks}</nav>
@@ -151,7 +167,7 @@ export default function PublicLayout() {
 
       <footer className="border-t border-border bg-surface">
         <div className="mx-auto max-w-6xl px-4 py-6 text-center text-sm text-text-muted">
-          &copy; {new Date().getFullYear()} {t('app.name', { ns: 'common' })}. All rights reserved.
+          &copy; {new Date().getFullYear()} {footerText}
         </div>
       </footer>
     </div>

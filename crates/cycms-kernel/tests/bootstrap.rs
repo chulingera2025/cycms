@@ -144,11 +144,20 @@ audit_enabled = false
         .get::<MediaManager>("system.media")
         .unwrap();
 
-    // ContentModel 已挂入上下文并完成默认种子：page (Single) + post (Collection)
+    // ContentModel 已挂入上下文并完成默认博客预设。
+    let category = ctx.content_model.get_type("category").await.unwrap().unwrap();
+    assert_eq!(category.kind, ContentTypeKind::Collection);
     let page = ctx.content_model.get_type("page").await.unwrap().unwrap();
-    assert_eq!(page.kind, ContentTypeKind::Single);
+    assert_eq!(page.kind, ContentTypeKind::Collection);
     let post = ctx.content_model.get_type("post").await.unwrap().unwrap();
     assert_eq!(post.kind, ContentTypeKind::Collection);
+    let site_settings = ctx
+        .content_model
+        .get_type("site_settings")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(site_settings.kind, ContentTypeKind::Single);
 
     // ContentEngine 已挂入上下文：可对 seeded 类型执行空 list 查询
     let res = ctx

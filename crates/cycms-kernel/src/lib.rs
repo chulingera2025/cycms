@@ -80,7 +80,7 @@ impl Kernel {
     /// `ServiceRegistry` → `ContentModel` → `RevisionManager` → `ContentEngine` →
     /// `PluginContext` → `PluginManager` → API
     ///
-    /// 当 `system_migrations_dir` 为 `Some` 时会执行系统迁移并注入默认 `page` / `post`
+    /// 当 `system_migrations_dir` 为 `Some` 时会执行系统迁移并注入默认博客预设
     /// 内容类型；传 `None` 跳过迁移与 seed，适合只想构造上下文做诊断的调用方。
     ///
     /// # Errors

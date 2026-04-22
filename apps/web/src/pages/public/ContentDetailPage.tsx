@@ -1,9 +1,10 @@
 import { Suspense, lazy } from 'react';
 import { Breadcrumb, Collapse, Empty, Skeleton, Tag, Typography } from 'antd';
-import { Link, useParams } from 'react-router-dom';
-import { usePublicContentDetail } from '@/features/public/hooks';
+import { Link, useLocation, useParams } from 'react-router-dom';
+import { useMedia } from '@/features/media/hooks';
+import { useBlogPostDetail, usePublicContentDetail } from '@/features/public/hooks';
 import { PageSkeleton } from '@/components/shared/PageSkeleton';
-import { formatDateTime } from '@/utils/format';
+import { formatDateTime, resolveMediaUrl } from '@/utils/format';
 
 const MarkdownPreview = lazy(async () => {
   const mod = await import('@uiw/react-md-editor');
@@ -51,17 +52,101 @@ function FieldValue({ value }: { value: unknown }) {
 
 export default function ContentDetailPage() {
   const { typeApiId, idOrSlug } = useParams<{ typeApiId: string; idOrSlug: string }>();
-  const { data: entry, isLoading, error } = usePublicContentDetail(typeApiId, idOrSlug);
+  const location = useLocation();
+  const effectiveTypeApiId = typeApiId ?? (location.pathname.startsWith('/blog') ? 'post' : undefined);
+  const isBlogMode = effectiveTypeApiId === 'post';
+  const { data: entry, isLoading, error } = usePublicContentDetail(
+    isBlogMode ? undefined : effectiveTypeApiId,
+    idOrSlug,
+  );
+  const blogQuery = useBlogPostDetail(idOrSlug, isBlogMode);
+  const { data: cover } = useMedia(blogQuery.data?.coverImageId);
 
-  if (isLoading) return <PageSkeleton variant="detail" />;
-  if (error || !entry) return <Empty description="内容未找到" />;
+  if ((isBlogMode && blogQuery.isLoading) || (!isBlogMode && isLoading)) {
+    return <PageSkeleton variant="detail" />;
+  }
+
+  if (isBlogMode) {
+    const post = blogQuery.data;
+
+    if (blogQuery.error || !post) {
+      return <Empty description="文章未找到" />;
+    }
+
+    return (
+      <article className="mx-auto max-w-4xl">
+        <Breadcrumb
+          items={[
+            { title: <Link to="/">首页</Link> },
+            { title: <Link to="/blog">博客</Link> },
+            { title: post.title },
+          ]}
+        />
+
+        <header className="mt-5">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            {post.featured && <Tag color="gold">精选</Tag>}
+            {post.categories.map((category) => (
+              <Tag key={category.id} color="blue">{category.name}</Tag>
+            ))}
+            {post.tags.map((tag) => (
+              <Tag key={tag.id}>{tag.name}</Tag>
+            ))}
+          </div>
+
+          <Typography.Title level={1} style={{ marginTop: 0, marginBottom: 12 }}>
+            {post.title}
+          </Typography.Title>
+          {post.excerpt && (
+            <Typography.Paragraph type="secondary" style={{ fontSize: 16, marginBottom: 12 }}>
+              {post.excerpt}
+            </Typography.Paragraph>
+          )}
+          {post.publishedAt && (
+            <Typography.Text type="secondary">
+              发布于 {formatDateTime(post.publishedAt)}
+            </Typography.Text>
+          )}
+        </header>
+
+        {cover && (
+          <div className="mt-6 overflow-hidden rounded-[24px] border border-border bg-surface-alt">
+            <img
+              src={resolveMediaUrl(cover.storage_path)}
+              alt={post.title}
+              className="h-auto w-full object-cover"
+            />
+          </div>
+        )}
+
+        <section className="mt-8 rounded-[24px] border border-border bg-surface px-6 py-7 shadow-sm">
+          <div data-color-mode="inherit" className="prose prose-slate max-w-none dark:prose-invert">
+            {looksLikeMarkdown(post.body) ? (
+              <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} />}>
+                <MarkdownPreview
+                  source={post.body}
+                  style={{ background: 'transparent', color: 'inherit' }}
+                />
+              </Suspense>
+            ) : (
+              <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>
+                {post.body}
+              </Typography.Paragraph>
+            )}
+          </div>
+        </section>
+      </article>
+    );
+  }
+
+  if (error || !entry || !effectiveTypeApiId) return <Empty description="内容未找到" />;
 
   return (
     <article>
       <Breadcrumb
         items={[
           { title: <Link to="/">首页</Link> },
-          { title: <Link to={`/content/${typeApiId}`}>{typeApiId}</Link> },
+          { title: <Link to={`/content/${effectiveTypeApiId}`}>{effectiveTypeApiId}</Link> },
           { title: entry.slug ?? entry.id.slice(0, 8) },
         ]}
       />

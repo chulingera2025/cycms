@@ -235,8 +235,16 @@ async fn seed_command_creates_admin_roles_and_default_content_types() {
         .await
         .unwrap();
     assert!(roles.iter().any(|role| role.name == SUPER_ADMIN_ROLE));
+    assert!(ctx.content_model.get_type("category").await.unwrap().is_some());
+    assert!(ctx.content_model.get_type("tag").await.unwrap().is_some());
     assert!(ctx.content_model.get_type("page").await.unwrap().is_some());
     assert!(ctx.content_model.get_type("post").await.unwrap().is_some());
+    assert!(ctx
+        .content_model
+        .get_type("site_settings")
+        .await
+        .unwrap()
+        .is_some());
 }
 
 #[tokio::test]
