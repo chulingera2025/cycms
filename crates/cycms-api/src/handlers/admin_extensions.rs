@@ -27,6 +27,7 @@ pub fn protected_routes() -> Router<Arc<ApiState>> {
         .route("/bootstrap", get(get_bootstrap))
         .route("/diagnostics", get(get_diagnostics))
         .route("/events", post(post_event))
+        .route("/registry", get(get_registry_diagnostics))
 }
 
 pub fn public_routes() -> Router<Arc<ApiState>> {
@@ -62,6 +63,21 @@ pub async fn get_diagnostics(
         recent_events,
         security,
     }))
+}
+
+pub async fn get_registry_diagnostics(
+    State(state): State<Arc<ApiState>>,
+    Authenticated(claims): Authenticated,
+) -> Result<Json<serde_json::Value>> {
+    require_permission(&state, &claims, "plugin.lifecycle.read", None).await?;
+    let snapshot = state.host_registry.diagnostics_snapshot();
+    let recent_events = state.admin_extension_events.snapshot().await;
+    let timestamp = chrono::Utc::now().to_rfc3339();
+    Ok(Json(serde_json::json!({
+        "hostRegistry": snapshot,
+        "recentEventCount": recent_events.len(),
+        "timestamp": timestamp,
+    })))
 }
 
 pub async fn post_event(

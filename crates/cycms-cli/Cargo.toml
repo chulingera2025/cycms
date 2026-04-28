@@ -13,6 +13,7 @@ serde_json = { workspace = true }
 cycms-core = { workspace = true }
 cycms-config = { workspace = true }
 cycms-db = { workspace = true }
+cycms-host-types = { workspace = true }
 cycms-kernel = { workspace = true }
 cycms-migrate = { workspace = true }
 cycms-auth = { workspace = true }

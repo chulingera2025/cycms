@@ -316,7 +316,8 @@ pub struct AdminMenuGroup {
     pub entries: Vec<AdminMenuEntry>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OwnershipDecision<T> {
     pub primary: Option<T>,
     pub wrappers: Vec<T>,

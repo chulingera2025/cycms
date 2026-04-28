@@ -17,6 +17,7 @@ pub enum Commands {
     Migrate(MigrateArgs),
     Seed(SeedArgs),
     Plugin(PluginArgs),
+    Inspect(InspectArgs),
 }
 
 #[derive(Debug, Args)]
@@ -45,6 +46,7 @@ pub enum MigrateCommand {
         #[arg(long, default_value_t = 1)]
         count: usize,
     },
+    Status,
 }
 
 #[derive(Debug, Args)]
@@ -123,4 +125,18 @@ pub struct PluginRemoveArgs {
     #[arg(long, default_value = "cycms.toml")]
     pub config: PathBuf,
     pub name: String,
+}
+
+#[derive(Debug, Args)]
+pub struct InspectArgs {
+    #[command(subcommand)]
+    pub command: InspectCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum InspectCommand {
+    Registry,
+    Route {
+        path: String,
+    },
 }

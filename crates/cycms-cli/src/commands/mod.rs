@@ -1,3 +1,4 @@
+pub(crate) mod inspect;
 pub(crate) mod migrate;
 pub(crate) mod new;
 pub(crate) mod plugin;

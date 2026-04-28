@@ -19,5 +19,6 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Migrate(args) => commands::migrate::run(args).await,
         Commands::Seed(args) => commands::seed::run(args).await,
         Commands::Plugin(args) => commands::plugin::run(args).await,
+        Commands::Inspect(args) => commands::inspect::run(args),
     }
 }
