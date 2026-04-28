@@ -11,6 +11,9 @@ const PublicLayout = lazy(() => import('@/components/public/PublicLayout'));
 // Admin pages
 const AdminLoginPage = lazy(() => import('@/pages/admin/LoginPage'));
 const DashboardPage = lazy(() => import('@/pages/admin/DashboardPage'));
+const WritePostPage = lazy(() => import('@/pages/admin/WritePostPage'));
+const PagesWorkspacePage = lazy(() => import('@/pages/admin/PagesWorkspacePage'));
+const SiteSettingsWorkspacePage = lazy(() => import('@/pages/admin/SiteSettingsWorkspacePage'));
 const ContentTypesPage = lazy(() => import('@/pages/admin/ContentTypesPage'));
 const ContentPage = lazy(() => import('@/pages/admin/ContentPage'));
 const MediaPage = lazy(() => import('@/pages/admin/MediaPage'));
@@ -67,6 +70,9 @@ export const router = createBrowserRouter([
             children: [
               { index: true, element: <Navigate to="dashboard" replace /> },
               { path: 'dashboard', element: <Lazy><DashboardPage /></Lazy> },
+              { path: 'write', element: <Lazy><WritePostPage /></Lazy> },
+              { path: 'pages', element: <Lazy><PagesWorkspacePage /></Lazy> },
+              { path: 'site-settings', element: <Lazy><SiteSettingsWorkspacePage /></Lazy> },
               { path: 'content-types', element: <Lazy><ContentTypesPage /></Lazy> },
               { path: 'content', element: <Lazy><ContentPage /></Lazy> },
               { path: 'media', element: <Lazy><MediaPage /></Lazy> },

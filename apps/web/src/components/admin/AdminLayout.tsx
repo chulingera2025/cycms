@@ -52,6 +52,12 @@ const ZONE_ORDER: Record<string, number> = {
   settings: 40,
 };
 
+const ROUTE_LABELS: Record<string, string> = {
+  '/admin/write': '写文章',
+  '/admin/pages': '管理页面',
+  '/admin/site-settings': '站点设置',
+};
+
 function resolvePluginIcon(icon?: string) {
   switch (icon) {
     case 'database':
@@ -134,6 +140,12 @@ function AdminLayoutContent() {
   }));
 
   const selectedEntry = navEntries.find((entry) => {
+    if (location.pathname.startsWith('/admin/write') || location.pathname.startsWith('/admin/pages')) {
+      return entry.key === '/admin/content';
+    }
+    if (location.pathname.startsWith('/admin/site-settings')) {
+      return entry.key === '/admin/settings';
+    }
     if (entry.key === '/admin/dashboard') {
       return location.pathname === entry.key;
     }
@@ -155,7 +167,12 @@ function AdminLayoutContent() {
     return settingsPage ? `${pluginName} 设置` : null;
   }, [findRoute, findSettingsPage, location.pathname]);
 
-  const currentLabel = selectedEntry?.label ?? namespaceLabel ?? (location.pathname === '/admin' ? t('nav.dashboard') : '');
+  const staticRouteLabel = useMemo(
+    () => Object.entries(ROUTE_LABELS).find(([prefix]) => location.pathname.startsWith(prefix))?.[1] ?? null,
+    [location.pathname],
+  );
+
+  const currentLabel = selectedEntry?.label ?? staticRouteLabel ?? namespaceLabel ?? (location.pathname === '/admin' ? t('nav.dashboard') : '');
 
   function handleMenuClick(key: string) {
     navigate(key);

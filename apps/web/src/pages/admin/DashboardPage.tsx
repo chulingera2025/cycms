@@ -130,19 +130,19 @@ export default function DashboardPage() {
     {
       title: '写文章',
       description: '进入 post 内容类型，开始新建或继续编辑文章。',
-      to: '/admin/content?type=post',
+      to: '/admin/write',
       icon: <Feather size={16} />,
     },
     {
       title: '管理页面',
       description: '维护关于页、落地页和常驻页面内容。',
-      to: '/admin/content?type=page',
+      to: '/admin/pages',
       icon: <FileText size={16} />,
     },
     {
       title: '站点设置',
       description: '更新 site_settings，控制前台品牌文案和首页视觉。',
-      to: '/admin/content?type=site_settings',
+      to: '/admin/site-settings',
       icon: <Settings size={16} />,
     },
     {
@@ -170,12 +170,12 @@ export default function DashboardPage() {
             </Typography.Paragraph>
           </div>
           <Space wrap>
-            <Link to="/admin/content?type=post">
+            <Link to="/admin/write">
               <Button type="primary" icon={<Feather size={14} />}>
                 写文章
               </Button>
             </Link>
-            <Link to="/admin/content?type=site_settings">
+            <Link to="/admin/site-settings">
               <Button icon={<Settings size={14} />}>
                 站点设置
               </Button>
@@ -190,13 +190,12 @@ export default function DashboardPage() {
           type="info"
           showIcon
           message="站点设置尚未初始化"
-          description="建议先创建 site_settings 条目，补齐站点名称、hero 文案、页脚文案和精选文章。"
         />
       )}
 
       <Row gutter={[16, 16]} className="mb-6">
         {cards.map((c) => (
-          <Col key={c.title} xs={24} sm={12} lg={6}>
+          <Col key={c.title} xs={24} sm={12} xl={6}>
             <Link to={c.to} className="block no-underline">
               <Card hoverable>
                 <div className="flex items-center justify-between gap-4">
@@ -251,7 +250,7 @@ export default function DashboardPage() {
             entries={draftPosts.data?.data ?? []}
             loading={draftPosts.isLoading}
             empty="目前没有草稿文章。"
-            linkTo="/admin/content?type=post"
+            linkTo="/admin/write"
           />
         </Col>
         <Col xs={24} xl={12}>
@@ -261,7 +260,7 @@ export default function DashboardPage() {
             entries={publishedPosts.data?.data ?? []}
             loading={publishedPosts.isLoading}
             empty="目前还没有已发布文章。"
-            linkTo="/admin/content?type=post"
+            linkTo="/admin/write"
           />
         </Col>
         <Col xs={24} xl={12}>
@@ -276,9 +275,6 @@ export default function DashboardPage() {
                 <div className="mt-1 text-base font-medium text-text">
                   {hasSiteSettings ? '已配置' : '未配置'}
                 </div>
-              </div>
-              <div className="rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-text-secondary">
-                默认博客预设已经落在 category、tag、page、post、site_settings 五类内容模型上。后台首页现在直接围绕这些模型组织工作流。
               </div>
             </div>
           </Card>
