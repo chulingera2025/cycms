@@ -136,7 +136,5 @@ pub struct InspectArgs {
 #[derive(Debug, Subcommand)]
 pub enum InspectCommand {
     Registry,
-    Route {
-        path: String,
-    },
+    Route { path: String },
 }

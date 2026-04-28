@@ -14,25 +14,34 @@ pub(crate) fn run(args: &InspectArgs) -> Result<()> {
 
 fn run_registry() -> Result<()> {
     let config = load_config(&std::path::PathBuf::from("cycms.toml"))?;
-    let plugins_root = resolve_plugins_root(&std::path::PathBuf::from("cycms.toml"), &config.plugins.directory);
+    let plugins_root = resolve_plugins_root(
+        &std::path::PathBuf::from("cycms.toml"),
+        &config.plugins.directory,
+    );
     let compiled = compile_extensions(&plugins_root)?;
     let registry = HostRegistry::new(compiled);
     let snapshot = registry.diagnostics_snapshot();
-    let payload = serde_json::to_string_pretty(&snapshot).map_err(|source| cycms_core::Error::Internal {
-        message: format!("serialize diagnostics snapshot: {source}"),
-        source: None,
-    })?;
+    let payload =
+        serde_json::to_string_pretty(&snapshot).map_err(|source| cycms_core::Error::Internal {
+            message: format!("serialize diagnostics snapshot: {source}"),
+            source: None,
+        })?;
     println!("{payload}");
     Ok(())
 }
 
 fn run_route(path: &str) -> Result<()> {
     let config = load_config(&std::path::PathBuf::from("cycms.toml"))?;
-    let plugins_root = resolve_plugins_root(&std::path::PathBuf::from("cycms.toml"), &config.plugins.directory);
+    let plugins_root = resolve_plugins_root(
+        &std::path::PathBuf::from("cycms.toml"),
+        &config.plugins.directory,
+    );
     let compiled = compile_extensions(&plugins_root)?;
     let registry = HostRegistry::new(compiled);
 
-    let request = HostRequestTarget { path: path.to_owned() };
+    let request = HostRequestTarget {
+        path: path.to_owned(),
+    };
     let public_decision = registry.resolve_public_page(&request);
     let admin_decision = registry.resolve_admin_page(&request);
 
@@ -49,10 +58,11 @@ fn run_route(path: &str) -> Result<()> {
         "public": public_decision,
         "admin": admin_decision,
     });
-    let payload = serde_json::to_string_pretty(&output).map_err(|source| cycms_core::Error::Internal {
-        message: format!("serialize route resolution: {source}"),
-        source: None,
-    })?;
+    let payload =
+        serde_json::to_string_pretty(&output).map_err(|source| cycms_core::Error::Internal {
+            message: format!("serialize route resolution: {source}"),
+            source: None,
+        })?;
     println!("{payload}");
     Ok(())
 }

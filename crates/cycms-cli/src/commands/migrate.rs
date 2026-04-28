@@ -92,15 +92,15 @@ async fn run_status(config_path: &std::path::Path) -> Result<()> {
     if pending_count > 0 {
         println!();
         println!("Pending migrations:");
-        let applied_set: std::collections::HashSet<i64> =
-            applied_versions.into_iter().collect();
+        let applied_set: std::collections::HashSet<i64> = applied_versions.into_iter().collect();
         for migration in &available {
             if !applied_set.contains(&migration.version) {
-                let has_down = if migration.down_sql.is_some() { " (has down)" } else { "" };
-                println!(
-                    "  - {}_{}{has_down}",
-                    migration.version, migration.name,
-                );
+                let has_down = if migration.down_sql.is_some() {
+                    " (has down)"
+                } else {
+                    ""
+                };
+                println!("  - {}_{}{has_down}", migration.version, migration.name,);
             }
         }
     }
