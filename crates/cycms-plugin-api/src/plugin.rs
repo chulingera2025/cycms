@@ -26,7 +26,7 @@ pub trait Plugin: Send + Sync {
     /// 插件唯一标识（同时作为 `ServiceRegistry` 键的 plugin 段）。
     fn name(&self) -> &str;
 
-    /// 插件版本，遵循 SemVer（`PluginManager` 的依赖解析以此为输入）。
+    /// 插件版本，遵循 `SemVer`（`PluginManager` 的依赖解析以此为输入）。
     fn version(&self) -> &str;
 
     /// 插件启用时的一次性初始化入口。

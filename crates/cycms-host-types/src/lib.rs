@@ -8,9 +8,12 @@ pub const COMPILED_EXTENSION_REGISTRY_SCHEMA_VERSION: u32 = 1;
 pub const CONTENT_DOCUMENT_SCHEMA_VERSION: u32 = 1;
 pub const PAGE_DOCUMENT_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, Default,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum OwnershipMode {
+    #[default]
     Replace,
     Wrap,
     Append,
@@ -27,12 +30,6 @@ impl OwnershipMode {
     }
 }
 
-impl Default for OwnershipMode {
-    fn default() -> Self {
-        Self::Replace
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RegistrationOriginKind {
@@ -42,19 +39,16 @@ pub enum RegistrationOriginKind {
     FrontendCompatibility,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, Default,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminPageMode {
     Html,
+    #[default]
     Hybrid,
     Island,
     Compatibility,
-}
-
-impl Default for AdminPageMode {
-    fn default() -> Self {
-        Self::Hybrid
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -570,6 +564,7 @@ mod status_code_serde {
     use http::StatusCode;
     use serde::{Deserialize, Deserializer, Serializer, de::Error as _};
 
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn serialize<S>(value: &StatusCode, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,

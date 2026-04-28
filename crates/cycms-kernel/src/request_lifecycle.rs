@@ -5,12 +5,15 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use cycms_admin_shell::{AdminShellRenderer, DefaultAdminShellRenderer};
 use cycms_host_types::{
-    AdminPageRegistration, AssetGraph, AssetReference, HeadNode, HostRequestTarget, HtmlNode,
-    PageDocument, PageNode, PublicPageRegistration, TextNode,
+    AdminPageRegistration, AssetGraph, AssetReference, HeadNode, HookRegistration,
+    HostRequestTarget, HtmlNode, OwnershipDecision, PageDocument, PageNode, ParseTarget,
+    PublicPageRegistration, TextNode,
 };
 use cycms_plugin_manager::{HostRegistry, RegistryLookup};
 use cycms_render::{
-    AssetGraphBuilder, DefaultAssetGraphBuilder, DefaultHtmlRenderer, HtmlRenderer,
+    AssetGraphBuilder, ContentInput, DefaultAssetGraphBuilder, DefaultHtmlRenderer,
+    DefaultPageBuilder, HtmlRenderer, PageBuildContext, PageBuildInput, PageBuilder, ParseContext,
+    parse_with_defaults,
 };
 use tracing::error;
 
@@ -18,6 +21,11 @@ use tracing::error;
 pub enum LifecyclePhase {
     RequestReceived,
     RouteMatched,
+    LoadData,
+    ResolveContent,
+    ParseContent,
+    BuildPage,
+    InjectAssets,
     CompatSpaFallback,
     CompatAdminFallback,
     BeforeSend,
@@ -29,6 +37,11 @@ impl LifecyclePhase {
         match self {
             Self::RequestReceived => "request_received",
             Self::RouteMatched => "route_matched",
+            Self::LoadData => "load_data",
+            Self::ResolveContent => "resolve_content",
+            Self::ParseContent => "parse_content",
+            Self::BuildPage => "build_page",
+            Self::InjectAssets => "inject_assets",
             Self::CompatSpaFallback => "compat_spa_fallback",
             Self::CompatAdminFallback => "compat_admin_fallback",
             Self::BeforeSend => "before_send",
@@ -40,6 +53,7 @@ impl LifecyclePhase {
 pub struct LifecycleTrace {
     pub target: HostRequestTarget,
     pub phases: Vec<LifecyclePhase>,
+    pub effective_chain: Vec<String>,
 }
 
 impl LifecycleTrace {
@@ -48,6 +62,7 @@ impl LifecycleTrace {
         Self {
             target: HostRequestTarget { path },
             phases: vec![LifecyclePhase::RequestReceived],
+            effective_chain: Vec::new(),
         }
     }
 
@@ -62,6 +77,15 @@ impl LifecycleTrace {
             .map(|phase| phase.as_str())
             .collect::<Vec<_>>()
             .join(",")
+    }
+
+    pub fn push_effective_chain(&mut self, item: String) {
+        self.effective_chain.push(item);
+    }
+
+    #[must_use]
+    pub fn effective_chain_header_value(&self) -> String {
+        self.effective_chain.join(",")
     }
 }
 
@@ -84,6 +108,7 @@ pub struct DefaultRequestLifecycleEngine {
 }
 
 impl DefaultRequestLifecycleEngine {
+    #[cfg(test)]
     #[must_use]
     pub fn new(registry: Arc<HostRegistry>) -> Self {
         Self {
@@ -103,16 +128,25 @@ impl DefaultRequestLifecycleEngine {
         }
     }
 
+    pub fn dispatch_before_send(&self, trace: &mut LifecycleTrace) {
+        self.dispatch_phase_hooks(LifecyclePhase::BeforeSend, trace);
+    }
+
     #[must_use]
     pub fn execute_public_request(&self, request: &Request) -> PublicLifecycleOutcome {
         let mut trace = LifecycleTrace::new(request.uri().path().to_owned());
-        trace.push(LifecyclePhase::RouteMatched);
+        self.enter_phase(LifecyclePhase::RouteMatched, &mut trace);
+        self.enter_phase(LifecyclePhase::LoadData, &mut trace);
+        self.enter_phase(LifecyclePhase::ResolveContent, &mut trace);
+        self.enter_phase(LifecyclePhase::ParseContent, &mut trace);
+        self.enter_phase(LifecyclePhase::BuildPage, &mut trace);
 
         let decision = self.registry.resolve_public_page(&trace.target);
         let response = decision
             .primary
             .as_ref()
-            .map(|page| render_owned_public_page(page, self.registry.as_ref()));
+            .map(|page| render_owned_public_page(page, self.registry.as_ref(), &mut trace));
+        self.enter_phase(LifecyclePhase::InjectAssets, &mut trace);
 
         PublicLifecycleOutcome { response, trace }
     }
@@ -120,7 +154,11 @@ impl DefaultRequestLifecycleEngine {
     #[must_use]
     pub fn execute_admin_request(&self, request: &Request) -> AdminLifecycleOutcome {
         let mut trace = LifecycleTrace::new(request.uri().path().to_owned());
-        trace.push(LifecyclePhase::RouteMatched);
+        self.enter_phase(LifecyclePhase::RouteMatched, &mut trace);
+        self.enter_phase(LifecyclePhase::LoadData, &mut trace);
+        self.enter_phase(LifecyclePhase::ResolveContent, &mut trace);
+        self.enter_phase(LifecyclePhase::ParseContent, &mut trace);
+        self.enter_phase(LifecyclePhase::BuildPage, &mut trace);
 
         let decision = self.registry.resolve_admin_page(&trace.target);
         let response = decision.primary.as_ref().map(|page| {
@@ -130,41 +168,105 @@ impl DefaultRequestLifecycleEngine {
                 self.host_island_runtime_module.as_deref(),
             )
         });
+        self.enter_phase(LifecyclePhase::InjectAssets, &mut trace);
 
         AdminLifecycleOutcome { response, trace }
     }
+
+    fn enter_phase(&self, phase: LifecyclePhase, trace: &mut LifecycleTrace) {
+        trace.push(phase);
+        self.dispatch_phase_hooks(phase, trace);
+    }
+
+    fn dispatch_phase_hooks(&self, phase: LifecyclePhase, trace: &mut LifecycleTrace) {
+        let decision = self.registry.resolve_hook_phase(phase.as_str());
+        trace.push_effective_chain(format!("phase:{}", phase.as_str()));
+        record_hook_decision(phase, &decision, trace);
+    }
 }
 
-fn render_owned_public_page(page: &PublicPageRegistration, registry: &HostRegistry) -> Response {
+fn render_owned_public_page(
+    page: &PublicPageRegistration,
+    registry: &HostRegistry,
+    trace: &mut LifecycleTrace,
+) -> Response {
     let title = page.title.clone().unwrap_or_else(|| page.path.clone());
-    let document = PageDocument {
-        route_id: format!("public:{}", page.path),
-        status: StatusCode::OK,
-        head: vec![HeadNode::Title {
-            text: title.clone(),
-        }],
-        body: vec![PageNode::Html(HtmlNode {
-            tag: "main".to_owned(),
-            attributes: Default::default(),
-            children: vec![
-                PageNode::Html(HtmlNode {
-                    tag: "h1".to_owned(),
-                    attributes: Default::default(),
-                    children: vec![PageNode::Text(TextNode { value: title })],
-                }),
-                PageNode::Html(HtmlNode {
+    let parser_target = ParseTarget {
+        content_type: Some("public_page".to_owned()),
+        field_name: Some(page.id.clone()),
+        source_format: Some("markdown".to_owned()),
+    };
+    let parser_decision = registry.resolve_parser(&parser_target);
+    if let Some(parser) = parser_decision.primary.as_ref() {
+        trace.push_effective_chain(format!("parser:{}:{}", parser.id, parser.parser));
+    } else {
+        trace.push_effective_chain("parser:default.markdown".to_owned());
+    }
+
+    let parser_id = parser_decision
+        .primary
+        .as_ref()
+        .map(|parser| parser.parser.clone())
+        .unwrap_or_else(|| "default.markdown".to_owned());
+    let content = match parse_with_defaults(
+        ContentInput::Text(format!("# {title}\n\nHandled by {}", page.handler)),
+        &ParseContext {
+            format: "markdown".to_owned(),
+            parser_id,
+            origin_field: Some(page.id.clone()),
+            content_type: Some("public_page".to_owned()),
+        },
+    ) {
+        Ok(content) => content,
+        Err(source) => {
+            error!(path = %page.path, handler = %page.handler, error = %source, "failed to parse host-owned public content");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                "Internal server error",
+            )
+                .into_response();
+        }
+    };
+
+    let document = match DefaultPageBuilder.build(
+        PageBuildInput {
+            route_id: format!("public:{}", page.path),
+            status: StatusCode::OK,
+            head: vec![HeadNode::Title {
+                text: title.clone(),
+            }],
+            content: Some(content),
+            body: vec![PageNode::Html(HtmlNode {
+                tag: "main".to_owned(),
+                attributes: Default::default(),
+                children: vec![PageNode::Html(HtmlNode {
                     tag: "p".to_owned(),
                     attributes: Default::default(),
                     children: vec![PageNode::Text(TextNode {
-                        value: format!("Handled by {}", page.handler),
+                        value: format!("Owned by {}", page.handler),
                     })],
-                }),
-            ],
-        })],
-        actions: Vec::new(),
-        islands: Vec::new(),
-        cache_tags: vec![format!("plugin:{}", page.source.plugin_name)],
+                })],
+            })],
+            actions: Vec::new(),
+            islands: Vec::new(),
+            cache_tags: vec![format!("plugin:{}", page.source.plugin_name)],
+            layout_name: None,
+        },
+        &PageBuildContext::default(),
+    ) {
+        Ok(document) => document,
+        Err(source) => {
+            error!(path = %page.path, handler = %page.handler, error = %source, "failed to build host-owned public page document");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                "Internal server error",
+            )
+                .into_response();
+        }
     };
+
     let assets = match DefaultAssetGraphBuilder.build_public_page(&document, page, registry) {
         Ok(assets) => assets,
         Err(source) => {
@@ -179,6 +281,37 @@ fn render_owned_public_page(page: &PublicPageRegistration, registry: &HostRegist
     };
 
     render_owned_document(&document, &assets, &page.path, &page.handler, "public")
+}
+
+fn record_hook_decision(
+    phase: LifecyclePhase,
+    decision: &OwnershipDecision<HookRegistration>,
+    trace: &mut LifecycleTrace,
+) {
+    if let Some(primary) = &decision.primary {
+        trace.push_effective_chain(format!(
+            "{}:replace:{}=>{}",
+            phase.as_str(),
+            primary.id,
+            primary.handler
+        ));
+    }
+    for wrapper in &decision.wrappers {
+        trace.push_effective_chain(format!(
+            "{}:wrap:{}=>{}",
+            phase.as_str(),
+            wrapper.id,
+            wrapper.handler
+        ));
+    }
+    for appender in &decision.appenders {
+        trace.push_effective_chain(format!(
+            "{}:append:{}=>{}",
+            phase.as_str(),
+            appender.id,
+            appender.handler
+        ));
+    }
 }
 
 fn render_owned_admin_page(
@@ -264,8 +397,8 @@ mod tests {
 
     use axum::body::{self, Body};
     use cycms_host_types::{
-        AdminPageMode, AssetBundleRegistration, CompiledExtensionRegistry, OwnershipMode,
-        PublicPageRegistration, RegistrationOriginKind, RegistrationSource,
+        AdminPageMode, AssetBundleRegistration, CompiledExtensionRegistry, HookRegistration,
+        OwnershipMode, PublicPageRegistration, RegistrationOriginKind, RegistrationSource,
     };
     use cycms_plugin_manager::HostRegistry;
 
@@ -353,7 +486,12 @@ mod tests {
             outcome.trace.phases,
             vec![
                 LifecyclePhase::RequestReceived,
-                LifecyclePhase::RouteMatched
+                LifecyclePhase::RouteMatched,
+                LifecyclePhase::LoadData,
+                LifecyclePhase::ResolveContent,
+                LifecyclePhase::ParseContent,
+                LifecyclePhase::BuildPage,
+                LifecyclePhase::InjectAssets,
             ]
         );
     }
@@ -374,7 +512,12 @@ mod tests {
             outcome.trace.phases,
             vec![
                 LifecyclePhase::RequestReceived,
-                LifecyclePhase::RouteMatched
+                LifecyclePhase::RouteMatched,
+                LifecyclePhase::LoadData,
+                LifecyclePhase::ResolveContent,
+                LifecyclePhase::ParseContent,
+                LifecyclePhase::BuildPage,
+                LifecyclePhase::InjectAssets,
             ]
         );
     }
@@ -507,5 +650,58 @@ mod tests {
 
         assert!(html.contains("href=\"/admin/x/blog/dashboard\""));
         assert!(html.contains("aria-current=\"page\""));
+    }
+
+    #[test]
+    fn lifecycle_records_deterministic_hook_execution_chain() {
+        let registry = Arc::new(HostRegistry::new(CompiledExtensionRegistry {
+            hooks: vec![
+                HookRegistration {
+                    id: "theme.build.wrap".to_owned(),
+                    source: source(1),
+                    priority: 10,
+                    ownership: OwnershipMode::Wrap,
+                    phase: "build_page".to_owned(),
+                    handler: "theme::hooks::build_wrap".to_owned(),
+                },
+                HookRegistration {
+                    id: "blog.build.replace".to_owned(),
+                    source: source(0),
+                    priority: 100,
+                    ownership: OwnershipMode::Replace,
+                    phase: "build_page".to_owned(),
+                    handler: "blog::hooks::build_replace".to_owned(),
+                },
+                HookRegistration {
+                    id: "analytics.before-send.append".to_owned(),
+                    source: source(2),
+                    priority: 0,
+                    ownership: OwnershipMode::Append,
+                    phase: "before_send".to_owned(),
+                    handler: "analytics::hooks::before_send".to_owned(),
+                },
+            ],
+            ..CompiledExtensionRegistry::default()
+        }));
+        let request = Request::builder().uri("/blog").body(Body::empty()).unwrap();
+
+        let engine = DefaultRequestLifecycleEngine::new(registry);
+        let mut trace = engine.execute_public_request(&request).trace;
+        engine.dispatch_before_send(&mut trace);
+
+        assert!(trace.effective_chain.contains(
+            &"build_page:replace:blog.build.replace=>blog::hooks::build_replace".to_owned()
+        ));
+        assert!(
+            trace
+                .effective_chain
+                .contains(&"build_page:wrap:theme.build.wrap=>theme::hooks::build_wrap".to_owned())
+        );
+        assert!(
+            trace.effective_chain.contains(
+                &"before_send:append:analytics.before-send.append=>analytics::hooks::before_send"
+                    .to_owned()
+            )
+        );
     }
 }

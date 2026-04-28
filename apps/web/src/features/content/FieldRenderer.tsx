@@ -15,7 +15,7 @@ import { resolveMediaUrl, formatBytes } from '@/utils/format';
 import type { FieldDefinition } from '@/types';
 import { RelationSelect } from './RelationSelect';
 import { RichTextEditor } from './RichTextEditor';
-import { useEditorRegistry } from './editorRegistry';
+import { resolveEditorOverride, useEditorRegistry } from './editorRegistry';
 
 interface Props {
   field: FieldDefinition;
@@ -235,11 +235,15 @@ export function FieldRenderer({
 
     case 'richtext':
       return (() => {
-        const override = editorRegistry.find((e) => e.fieldTypes.includes('richtext'));
+        const override = resolveEditorOverride(editorRegistry, {
+          contentType: contentTypeApiId,
+          fieldType: 'richtext',
+          screenTarget: 'admin:field_renderer',
+        });
         if (override && override.modules[0]) {
           return (
             <PluginFieldRendererHost
-              pluginName={override.editor}
+              pluginName={override.pluginName}
               contributionId={override.id}
               sdkVersion="1.0.0"
               moduleUrl={override.modules[0]}

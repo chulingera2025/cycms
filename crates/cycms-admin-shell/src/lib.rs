@@ -335,12 +335,16 @@ fn build_editor_registry_value(registry: &HostRegistry) -> Value {
                 .collect();
             json!({
                 "id": editor.id,
+                "pluginName": editor.source.plugin_name,
                 "editor": editor.editor,
                 "contentTypes": editor.content_types,
                 "fieldTypes": editor.field_types,
                 "screenTargets": editor.screen_targets,
                 "modules": modules,
                 "styles": styles,
+                "priority": editor.priority,
+                "ownership": editor.ownership,
+                "declarationOrder": editor.source.declaration_order,
             })
         })
         .collect::<Vec<_>>();

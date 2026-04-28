@@ -3,9 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use cycms_host_types::{
     AdminMenuEntry, AdminMenuGroup, AdminPageRegistration, CompiledExtensionRegistry,
-    EditorRegistration, EditorTarget, HostRegistryDiagnosticsSnapshot, HostRequestTarget,
-    OwnershipCandidate, OwnershipDecision, OwnershipDiagnostics, OwnershipMode, ParseTarget,
-    ParserRegistration, PublicPageRegistration, RegistrationSource,
+    EditorRegistration, EditorTarget, HookRegistration, HostRegistryDiagnosticsSnapshot,
+    HostRequestTarget, OwnershipCandidate, OwnershipDecision, OwnershipDiagnostics, OwnershipMode,
+    ParseTarget, ParserRegistration, PublicPageRegistration, RegistrationSource,
 };
 
 pub trait RegistryLookup {
@@ -22,6 +22,8 @@ pub trait RegistryLookup {
     fn resolve_parser(&self, target: &ParseTarget) -> OwnershipDecision<ParserRegistration>;
 
     fn resolve_editor(&self, target: &EditorTarget) -> OwnershipDecision<EditorRegistration>;
+
+    fn resolve_hook_phase(&self, phase: &str) -> OwnershipDecision<HookRegistration>;
 }
 
 #[derive(Debug, Clone)]
@@ -224,6 +226,17 @@ impl RegistryLookup for HostRegistry {
             .collect();
         Self::resolve_owned("editor", format_editor_target(target), candidates)
     }
+
+    fn resolve_hook_phase(&self, phase: &str) -> OwnershipDecision<HookRegistration> {
+        let candidates = self
+            .compiled
+            .hooks
+            .iter()
+            .filter(|hook| hook.phase == phase)
+            .cloned()
+            .collect();
+        Self::resolve_owned("hook_phase", phase.to_owned(), candidates)
+    }
 }
 
 trait OwnedRegistration: Clone {
@@ -279,6 +292,21 @@ impl OwnedRegistration for ParserRegistration {
 }
 
 impl OwnedRegistration for EditorRegistration {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn priority(&self) -> i32 {
+        self.priority
+    }
+    fn ownership(&self) -> OwnershipMode {
+        self.ownership
+    }
+    fn source(&self) -> &RegistrationSource {
+        &self.source
+    }
+}
+
+impl OwnedRegistration for HookRegistration {
     fn id(&self) -> &str {
         &self.id
     }
@@ -554,6 +582,51 @@ mod tests {
         let snapshot = registry.diagnostics_snapshot();
         assert_eq!(snapshot.compatibility.len(), 1);
         assert_eq!(snapshot.hooks.len(), 1);
+    }
+
+    #[test]
+    fn resolve_hook_phase_orders_replace_wrap_append() {
+        let registry = HostRegistry::new(CompiledExtensionRegistry {
+            hooks: vec![
+                HookRegistration {
+                    id: "theme.wrap".to_owned(),
+                    source: source("theme", 2),
+                    priority: 10,
+                    ownership: OwnershipMode::Wrap,
+                    phase: "build_page".to_owned(),
+                    handler: "theme::hooks::wrap".to_owned(),
+                },
+                HookRegistration {
+                    id: "blog.replace".to_owned(),
+                    source: source("blog", 1),
+                    priority: 100,
+                    ownership: OwnershipMode::Replace,
+                    phase: "build_page".to_owned(),
+                    handler: "blog::hooks::replace".to_owned(),
+                },
+                HookRegistration {
+                    id: "analytics.append".to_owned(),
+                    source: source("analytics", 3),
+                    priority: 0,
+                    ownership: OwnershipMode::Append,
+                    phase: "build_page".to_owned(),
+                    handler: "analytics::hooks::append".to_owned(),
+                },
+            ],
+            ..CompiledExtensionRegistry::default()
+        });
+
+        let decision = registry.resolve_hook_phase("build_page");
+        assert_eq!(
+            decision.primary.as_ref().map(|hook| hook.id.as_str()),
+            Some("blog.replace")
+        );
+        assert_eq!(decision.wrappers.len(), 1);
+        assert_eq!(decision.appenders.len(), 1);
+        assert_eq!(
+            decision.diagnostics.primary.as_deref(),
+            Some("blog.replace")
+        );
     }
 
     #[test]

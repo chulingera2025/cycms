@@ -49,6 +49,8 @@ use tracing::{info, warn};
 
 use crate::request_lifecycle::{DefaultRequestLifecycleEngine, LifecyclePhase, LifecycleTrace};
 
+const COMPILED_REGISTRY_ARTIFACT_NAME: &str = ".compiled-registry.json";
+
 /// 全局应用上下文，Kernel bootstrap 后在所有组件间共享。
 #[non_exhaustive]
 pub struct AppContext {
@@ -184,7 +186,12 @@ impl Kernel {
         let plugins_root =
             resolve_plugins_root(self.config_path.as_deref(), &self.config.plugins.directory);
         let web_dist_for_registry = resolve_web_dist_dir(self.config_path.as_deref());
-        let compiled = compile_extensions(&plugins_root)?;
+        let compiled = if self.config.host_rendering.compiled_registry_required {
+            let artifact_path = compiled_registry_artifact_path(&plugins_root);
+            load_compiled_registry_artifact(&artifact_path)?
+        } else {
+            compile_extensions(&plugins_root)?
+        };
         let compiled = inject_native_admin_island_pages(compiled, &web_dist_for_registry);
         let host_registry = Arc::new(HostRegistry::new(compiled));
         let native_runtime = Arc::new(NativePluginRuntime::new());
@@ -582,6 +589,27 @@ fn resolve_web_dist_dir(config_path: Option<&Path>) -> PathBuf {
     base.join("apps/web/dist")
 }
 
+fn compiled_registry_artifact_path(plugins_root: &Path) -> PathBuf {
+    plugins_root.join(COMPILED_REGISTRY_ARTIFACT_NAME)
+}
+
+fn load_compiled_registry_artifact(path: &Path) -> Result<CompiledExtensionRegistry> {
+    let payload = std::fs::read_to_string(path).map_err(|source| Error::BadRequest {
+        message: format!(
+            "compiled registry artifact is required but not readable: {}",
+            path.display()
+        ),
+        source: Some(Box::new(source)),
+    })?;
+    serde_json::from_str(&payload).map_err(|source| Error::BadRequest {
+        message: format!(
+            "invalid compiled registry artifact JSON at {}: {source}",
+            path.display()
+        ),
+        source: None,
+    })
+}
+
 fn build_public_fallback_service(
     mode: PublicPagesMode,
     host_registry: Arc<HostRegistry>,
@@ -619,7 +647,7 @@ fn build_admin_fallback_router(
         })
 }
 
-/// 将 CyCMS 内置 island admin 页面（content-workspace、media-workspace）注入
+/// 将 `CyCMS` 内置 island admin 页面（content-workspace、media-workspace）注入
 /// 已编译的扩展注册表。仅在 Vite 产物存在时注入，dist 不存在时跳过。
 fn inject_native_admin_island_pages(
     mut compiled: CompiledExtensionRegistry,
@@ -765,10 +793,13 @@ async fn public_fallback_handler(
         PublicPagesMode::HostFirst => {
             let outcome = state.lifecycle_engine.execute_public_request(&request);
             if let Some(response) = outcome.response {
-                finalize_public_response(response, state.mode, outcome.trace)
+                let mut trace = outcome.trace;
+                state.lifecycle_engine.dispatch_before_send(&mut trace);
+                finalize_public_response(response, state.mode, trace)
             } else {
                 let mut trace = outcome.trace;
                 trace.push(LifecyclePhase::CompatSpaFallback);
+                state.lifecycle_engine.dispatch_before_send(&mut trace);
                 let response = serve_spa_fallback(&state.web_dist, request).await;
                 finalize_public_response(response, state.mode, trace)
             }
@@ -776,12 +807,16 @@ async fn public_fallback_handler(
         PublicPagesMode::HostOnly => {
             let outcome = state.lifecycle_engine.execute_public_request(&request);
             if let Some(response) = outcome.response {
-                finalize_public_response(response, state.mode, outcome.trace)
+                let mut trace = outcome.trace;
+                state.lifecycle_engine.dispatch_before_send(&mut trace);
+                finalize_public_response(response, state.mode, trace)
             } else {
+                let mut trace = outcome.trace;
+                state.lifecycle_engine.dispatch_before_send(&mut trace);
                 finalize_public_response(
                     axum::http::StatusCode::NOT_FOUND.into_response(),
                     state.mode,
-                    outcome.trace,
+                    trace,
                 )
             }
         }
@@ -797,10 +832,13 @@ async fn admin_fallback_handler(
         AdminShellMode::HostFirst => {
             let outcome = state.lifecycle_engine.execute_admin_request(&request);
             if let Some(response) = outcome.response {
-                finalize_admin_response(response, state.mode, outcome.trace)
+                let mut trace = outcome.trace;
+                state.lifecycle_engine.dispatch_before_send(&mut trace);
+                finalize_admin_response(response, state.mode, trace)
             } else {
                 let mut trace = outcome.trace;
                 trace.push(LifecyclePhase::CompatAdminFallback);
+                state.lifecycle_engine.dispatch_before_send(&mut trace);
                 let response = serve_spa_fallback(&state.web_dist, request).await;
                 finalize_admin_response(response, state.mode, trace)
             }
@@ -808,12 +846,16 @@ async fn admin_fallback_handler(
         AdminShellMode::HostOnly => {
             let outcome = state.lifecycle_engine.execute_admin_request(&request);
             if let Some(response) = outcome.response {
-                finalize_admin_response(response, state.mode, outcome.trace)
+                let mut trace = outcome.trace;
+                state.lifecycle_engine.dispatch_before_send(&mut trace);
+                finalize_admin_response(response, state.mode, trace)
             } else {
+                let mut trace = outcome.trace;
+                state.lifecycle_engine.dispatch_before_send(&mut trace);
                 finalize_admin_response(
                     axum::http::StatusCode::NOT_FOUND.into_response(),
                     state.mode,
-                    outcome.trace,
+                    trace,
                 )
             }
         }
@@ -848,6 +890,14 @@ fn finalize_public_response(
             .headers_mut()
             .insert(HeaderName::from_static("x-cycms-lifecycle-trace"), value);
     }
+    let chain = trace.effective_chain_header_value();
+    if !chain.is_empty()
+        && let Ok(value) = HeaderValue::from_str(&chain)
+    {
+        response
+            .headers_mut()
+            .insert(HeaderName::from_static("x-cycms-lifecycle-chain"), value);
+    }
     response
 }
 
@@ -869,6 +919,14 @@ fn finalize_admin_response(
         response
             .headers_mut()
             .insert(HeaderName::from_static("x-cycms-lifecycle-trace"), value);
+    }
+    let chain = trace.effective_chain_header_value();
+    if !chain.is_empty()
+        && let Ok(value) = HeaderValue::from_str(&chain)
+    {
+        response
+            .headers_mut()
+            .insert(HeaderName::from_static("x-cycms-lifecycle-chain"), value);
     }
     response
 }
@@ -927,6 +985,7 @@ fn is_loopback_host(host: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
     use std::sync::Arc;
 
     use axum::body::{self, Body};
@@ -946,6 +1005,7 @@ mod tests {
 
     use super::{
         build_admin_fallback_router, build_public_fallback_service,
+        compiled_registry_artifact_path, load_compiled_registry_artifact,
         resolve_host_island_entry_module, validate_auth_config,
     };
 
@@ -1086,6 +1146,26 @@ mod tests {
         );
     }
 
+    #[test]
+    fn compiled_registry_artifact_path_uses_plugins_root() {
+        let path = compiled_registry_artifact_path(PathBuf::from("/tmp/cycms/plugins").as_path());
+        assert_eq!(
+            path,
+            PathBuf::from("/tmp/cycms/plugins/.compiled-registry.json")
+        );
+    }
+
+    #[test]
+    fn load_compiled_registry_artifact_roundtrips_json_payload() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join(".compiled-registry.json");
+        let payload = serde_json::to_string(&CompiledExtensionRegistry::default()).unwrap();
+        fs::write(&path, payload).unwrap();
+
+        let registry = load_compiled_registry_artifact(&path).unwrap();
+        assert_eq!(registry, CompiledExtensionRegistry::default());
+    }
+
     #[tokio::test]
     async fn compat_mode_serves_spa_index_for_unknown_public_path() {
         let temp = tempdir().unwrap();
@@ -1138,7 +1218,7 @@ mod tests {
         );
         assert_eq!(
             response.headers().get("x-cycms-lifecycle-trace").unwrap(),
-            "request_received,route_matched,compat_spa_fallback,before_send"
+            "request_received,route_matched,load_data,resolve_content,parse_content,build_page,inject_assets,compat_spa_fallback,before_send"
         );
     }
 
@@ -1168,7 +1248,7 @@ mod tests {
         );
         assert_eq!(
             response.headers().get("x-cycms-lifecycle-trace").unwrap(),
-            "request_received,route_matched,before_send"
+            "request_received,route_matched,load_data,resolve_content,parse_content,build_page,inject_assets,before_send"
         );
     }
 
@@ -1231,7 +1311,7 @@ mod tests {
         );
         assert_eq!(
             response.headers().get("x-cycms-lifecycle-trace").unwrap(),
-            "request_received,route_matched,before_send"
+            "request_received,route_matched,load_data,resolve_content,parse_content,build_page,inject_assets,before_send"
         );
         let body = body::to_bytes(response.into_body(), usize::MAX)
             .await
@@ -1274,7 +1354,7 @@ mod tests {
         );
         assert_eq!(
             response.headers().get("x-cycms-lifecycle-trace").unwrap(),
-            "request_received,route_matched,before_send"
+            "request_received,route_matched,load_data,resolve_content,parse_content,build_page,inject_assets,before_send"
         );
     }
 }
